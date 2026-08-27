@@ -215,7 +215,7 @@ CREATE TABLE chunks (
     page_number   INT,                       -- 页码（PDF 溯源）
     section_title VARCHAR(512),              -- 节标题
     token_count   INT NOT NULL,
-    embedding     vector(1536),              -- 维度随 embedding 模型可调
+    embedding     vector(1024),              -- bge-m3 维度
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -473,16 +473,17 @@ docker-compose.yml:
 
 ---
 
-## 12. 待确认事项（阻塞开发前）
+## 12. 已确认事项（2026-08-27 客户答复）
 
-| # | 事项 | 影响 |
+| # | 事项 | 最终决策 |
 |---|---|---|
-| 1 | 数据规模与格式（决定 pgvector 是否起步即需优化） | ADR-1 |
-| 2 | Embedding 维度（text-embedding-3 默认 1536，可调） | 表结构 |
-| 3 | LLM/Rerank provider 最终选型与成本上限 | ADR-3 |
-| 4 | 是否对接外部 SSO | users 表 external_id |
-| 5 | 对象存储选型（本地 / S3 / 云存储） | documents.storage_path |
+| 1 | 数据规模与格式 | 精简，以 demo 为目标（PDF/DOCX/MD/TXT 为主，OCR 可选） |
+| 2 | Embedding | **BAAI/bge-m3（1024 维，本地部署）**；备选 bge-small-zh-v1.5（512 维） |
+| 3 | LLM | demo 用 **Ollama + qwen2.5:7b-instruct**；Provider 抽象保留 OpenAI/Claude/Gemini |
+| 3 | Rerank | **BAAI/bge-reranker-v2-m3（本地）**；成本上限：本地 0，API 兜底月预算 $50 告警 |
+| 4 | SSO | 预留接口（users.external_id + OIDC 接口桩），不实现完整对接 |
+| 5 | 对象存储 | 本地文件系统模拟（StorageBackend 抽象，预留 S3） |
 
 ---
 
-*本文档为设计阶段产出，未包含任何实现代码；进入开发前需先完成 §12 待确认事项，并用 writing-plans 拆解为可执行任务。*
+*本文档为设计阶段产出，未包含任何实现代码；实现计划见 `docs/plans/2026-08-27-knowledgepilot-implementation.md`。*
