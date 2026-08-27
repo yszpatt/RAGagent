@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: kp
+      POSTGRES_PASSWORD: kp
+      POSTGRES_DB: knowledgepilot
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+  api:
+    build: ../backend
+    ports: ["8000:8000"]
+    env_file: [../.env]
+    depends_on: [postgres, redis]
+  worker:
+    build: ../backend
+    command: ["rq", "worker", "ingestion"]
+    env_file: [../.env]
+    depends_on: [postgres, redis]
+volumes:
+  pgdata:
