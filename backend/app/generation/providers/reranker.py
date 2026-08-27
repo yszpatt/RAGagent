@@ -9,5 +9,5 @@ class BgeReranker(RerankerProvider):
     def rerank(self, query: str, docs: list[str]) -> list[tuple[int, float]]:
         pairs = [(query, d) for d in docs]
         scores = self._model.predict(pairs)
-        ranked = sorted(enumerate(scores), key=lambda x: -x[1])
+        ranked = sorted(((i, float(s)) for i, s in enumerate(scores)), key=lambda x: -x[1])
         return ranked

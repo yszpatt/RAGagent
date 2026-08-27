@@ -18,4 +18,4 @@ def get_reranker() -> RerankerProvider:
 
 @lru_cache
 def get_llm() -> LLMProvider:
-    return OllamaLLM()
+    return OllamaLLM(settings.ollama_base_url, settings.llm_model)
