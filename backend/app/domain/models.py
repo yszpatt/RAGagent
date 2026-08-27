@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Text, Integer, Boolean, DateTime, ForeignKey, func
+from sqlalchemy import String, Text, Integer, Boolean, DateTime, ForeignKey, Index, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
@@ -39,6 +39,9 @@ class Document(Base):
 
 class DocumentPermission(Base):
     __tablename__ = "document_permissions"
+    __table_args__ = (
+        UniqueConstraint("document_id", "role"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
     role: Mapped[str] = mapped_column(String(32))
@@ -91,6 +94,10 @@ class IngestionJob(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("idx_audit_logs_user_time", "user_id", "created_at"),
+        Index("idx_audit_logs_ws_time", "workspace_id", "created_at"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"))
