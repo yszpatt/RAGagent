@@ -4,6 +4,12 @@ from langgraph.graph import StateGraph, END
 
 
 class QueryState(TypedDict):
+    """图调用的状态契约。
+
+    调用方只需提供 query + roles，其余键（retrieved / reranked / answer /
+    no_answer / citations）由管线各节点按序填充。
+    """
+
     query: str
     roles: list[str]
     retrieved: list
@@ -11,6 +17,17 @@ class QueryState(TypedDict):
     answer: str
     no_answer: bool
     citations: list
+
+
+_graph = None
+
+
+def get_query_graph():
+    """惰性单例：首次调用才构建图（此时才加载模型）。"""
+    global _graph
+    if _graph is None:
+        _graph = build_query_graph()
+    return _graph
 
 
 def build_query_graph():
@@ -24,6 +41,8 @@ def build_query_graph():
     reranker = get_reranker()
 
     def retrieve(state: QueryState) -> QueryState:
+        if not state.get("query") or not state.get("roles"):
+            raise ValueError("QueryState 必须包含非空 query 与 roles")
         vec = embedder.embed_query(state["query"])
         state["retrieved"] = store.search(vec, top_k=10, roles=state["roles"])
         return state

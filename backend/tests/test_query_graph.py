@@ -87,3 +87,42 @@ def test_graph_no_answer_low_rerank_score(monkeypatch):
 
     assert result["no_answer"] is True
     assert result["answer"] == settings.no_answer_message
+
+
+def test_graph_multi_doc_rerank_index_mapping(monkeypatch):
+    """rerank 返回 (1, 0.9) 时，答案应来自 retrieved[1]"""
+    from app.generation.graphs.query_graph import build_query_graph
+
+    retrieved = [
+        {"id": "chunk-0", "content": "低相关内容。", "page_number": 1, "section_title": "其他", "distance": 0.9},
+        {"id": "chunk-1", "content": "正确答案内容。", "page_number": 2, "section_title": "薪酬", "distance": 0.2},
+    ]
+    _patch_providers(monkeypatch, rerank_result=[(1, 0.9)])
+    _patch_search(monkeypatch, retrieved)
+
+    graph = build_query_graph()
+    result = graph.invoke({"query": "答案是什么", "roles": ["employee"]})
+
+    assert result["no_answer"] is False
+    assert "正确答案内容" in result["answer"]
+    assert "低相关内容" not in result["answer"]
+    assert result["citations"] == [{"chunk_id": "chunk-1", "page": 2}]
+
+
+def test_graph_roles_passthrough(monkeypatch):
+    """roles 应原样透传给 VectorStore.search"""
+    from app.generation.graphs.query_graph import build_query_graph
+
+    captured = {}
+
+    def fake_search(self, query_vec, top_k=5, roles=None, workspace_id=None):
+        captured["roles"] = roles
+        return []
+
+    _patch_providers(monkeypatch, rerank_result=[(0, 0.9)])
+    monkeypatch.setattr("app.retrieval.vector_store.VectorStore.search", fake_search)
+
+    graph = build_query_graph()
+    graph.invoke({"query": "我的福利", "roles": ["employee"]})
+
+    assert captured["roles"] == ["employee"]
