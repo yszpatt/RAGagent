@@ -86,3 +86,35 @@ def test_search_workspace_scoped(store, engine, clean_tables):
     results = store.search([0.2] * 1024, top_k=5, workspace_id=ws_a)
     assert len(results) == 1
     assert results[0]["content"] == "A工作区内容"
+
+
+def test_search_empty_roles_returns_nothing(store, engine, clean_tables):
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        ws_id = conn.execute(text(
+            "INSERT INTO workspaces (id, name) VALUES (:id, 't') RETURNING id"
+        ), {"id": str(uuid.uuid4())}).scalar()
+        doc_id = conn.execute(text(
+            "INSERT INTO documents (id, workspace_id, title, source_type, storage_path, status) "
+            "VALUES (:id, :ws, 'doc', 'txt', '/tmp/x', 'completed') RETURNING id"
+        ), {"id": str(uuid.uuid4()), "ws": str(ws_id)}).scalar()
+    store.add_chunk(doc_id, "内容", 0, 1, [0.3] * 1024)
+    assert store.search([0.3] * 1024, roles=[]) == []
+
+
+def test_search_top_k_limits_results(store, engine, clean_tables):
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        ws_id = conn.execute(text(
+            "INSERT INTO workspaces (id, name) VALUES (:id, 't') RETURNING id"
+        ), {"id": str(uuid.uuid4())}).scalar()
+        doc_id = conn.execute(text(
+            "INSERT INTO documents (id, workspace_id, title, source_type, storage_path, status) "
+            "VALUES (:id, :ws, 'doc', 'txt', '/tmp/x', 'completed') RETURNING id"
+        ), {"id": str(uuid.uuid4()), "ws": str(ws_id)}).scalar()
+    store.add_chunk(doc_id, "内容1", 0, 1, [0.1] * 1024)
+    store.add_chunk(doc_id, "内容2", 1, 1, [0.2] * 1024)
+    store.add_chunk(doc_id, "内容3", 2, 1, [0.3] * 1024)
+    results = store.search([0.3] * 1024, top_k=2)
+    assert len(results) == 2
+    assert results[0]["content"] == "内容3"  # 最近
