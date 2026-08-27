@@ -23,3 +23,18 @@ def test_chunk_preserves_content():
 def test_chunk_empty_text():
     assert recursive_chunk("") == []
     assert recursive_chunk("   ") == []
+
+
+def test_overlap_larger_than_chunk_size_clamped():
+    text = "x" * 100
+    chunks = recursive_chunk(text, chunk_size=10, overlap=30)
+    assert len(chunks) < 50  # 无退化爆炸
+    assert all(len(c) <= 10 + 30 for c in chunks)  # 有界
+
+
+def test_long_segment_without_separator_recurses():
+    # 无标点无空格的超长片段，应被更深层分隔符（字符级）切碎
+    text = "A" * 2000 + "\n\n" + "B" * 10
+    chunks = recursive_chunk(text, chunk_size=200, overlap=40)
+    assert len(chunks) > 1
+    assert all(len(c) <= 400 for c in chunks)  # 不允许 2000 字符整块
