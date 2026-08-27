@@ -61,3 +61,34 @@ def test_conversations_empty():
     r = client.get("/api/v1/conversations")
     assert r.status_code == 200
     assert r.json() == {"data": [], "meta": {"total": 0}}
+
+
+def test_chat_missing_query_returns_422():
+    r = client.post("/api/v1/chat", json={})
+    assert r.status_code == 422
+
+
+def test_chat_empty_query_returns_422():
+    r = client.post("/api/v1/chat", json={"query": ""})
+    assert r.status_code == 422
+
+
+def test_upload_blocks_path_traversal(monkeypatch, tmp_path):
+    # stub enqueue_ingestion：捕获实际写入路径，验证未被穿越到 UPLOAD_DIR 之外
+    captured = {}
+
+    def fake_enqueue(path, document_id, workspace_id=None):
+        captured["path"] = path
+        return SimpleNamespace(id="job-456")
+
+    monkeypatch.setattr("app.api.v1.documents.enqueue_ingestion", fake_enqueue)
+
+    r = client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("../escape.txt", b"escape", "text/plain")},
+    )
+    assert r.status_code == 200
+    assert captured["path"].startswith("/tmp/kp_uploads/")
+    # 清理后的文件名只保留 basename，且不含 ".."
+    assert ".." not in captured["path"]
+    assert captured["path"].endswith("_escape.txt")
