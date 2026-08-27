@@ -12,6 +12,14 @@ from app.retrieval.vector_store import VectorStore
 DEFAULT_WORKSPACE_NAME = "默认工作区"
 
 
+class NoTextExtractedError(ValueError):
+    """文档未提取出任何 chunk（如扫描件）。str() 供上层/测试匹配，入库文案走 failure_message。"""
+
+    def __init__(self):
+        super().__init__("no text extracted")
+        self.failure_message = "未能提取文本，可能是扫描件"
+
+
 def _resolve_workspace_id() -> uuid.UUID:
     """返回第一个 workspace；若不存在则创建一个默认 workspace。
 
@@ -54,15 +62,24 @@ def _mark_document_status(doc_id: uuid.UUID, status: str, error_message: str | N
         s.commit()
 
 
+def _delete_chunks(doc_id: uuid.UUID) -> None:
+    """清空某文档的全部 chunk，用于失败清理与重复摄取前的干净起点。"""
+    with SessionLocal() as s:
+        s.execute(text(
+            "DELETE FROM chunks WHERE document_id = :doc"
+        ), {"doc": doc_id})
+        s.commit()
+
+
 def run_ingestion(
     path: str,
     document_id: uuid.UUID | None = None,
     workspace_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
-    """解析→切块→向量化→入库。返回 document_id。
+    """解析→切块→向量化→批量入库。返回 document_id。
 
     workspace_id 缺省时自动解析/创建默认 workspace；失败时把
-    documents.status 标记为 failed 并重抛，由 RQ 记录任务失败。
+    documents.status 标记为 failed、清空残留 chunk 并重抛，由 RQ 记录任务失败。
     """
     doc_id = document_id or uuid.uuid4()
     if workspace_id is None:
@@ -72,15 +89,32 @@ def run_ingestion(
         pages = parse(path)
         embedder = get_embedding()
         store = VectorStore()
-        chunk_idx = 0
+        # 重复摄取同一 doc_id：先清空旧 chunk，从干净状态开始，避免重复累计。
+        _delete_chunks(doc_id)
+        batch = []
         for page in pages:
-            chunks = recursive_chunk(page.text)
-            for c in chunks:
+            for c in recursive_chunk(page.text):
                 vec = embedder.embed_documents([c])[0]
-                store.add_chunk(doc_id, c, chunk_idx, page.page_number, vec)
-                chunk_idx += 1
+                batch.append({
+                    "content": c,
+                    "chunk_index": len(batch),
+                    "page_number": page.page_number,
+                    "embedding": vec,
+                })
+        if len(batch) == 0:
+            raise NoTextExtractedError()
+        # 单事务批量入库：任一失败整体回滚，不产生孤儿 chunk。
+        store.add_chunks(doc_id, batch)
         _mark_document_status(doc_id, "completed")
     except Exception as e:
-        _mark_document_status(doc_id, "failed", str(e))
+        # 状态写入与清理都可能在 DB 本身宕机时失败：保护之，确保原始异常被重抛。
+        try:
+            _mark_document_status(doc_id, "failed", getattr(e, "failure_message", None) or str(e))
+        except Exception:
+            pass
+        try:
+            _delete_chunks(doc_id)
+        except Exception:
+            pass
         raise
     return doc_id
