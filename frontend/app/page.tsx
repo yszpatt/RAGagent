@@ -15,6 +15,7 @@ export default function Home() {
   const [error, setError] = useState("");
 
   async function ask() {
+    if (loading) return;
     if (!query.trim()) return;
     setLoading(true);
     setError("");

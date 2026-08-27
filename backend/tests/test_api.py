@@ -1,6 +1,8 @@
+import uuid
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from app.main import app
 
 client = TestClient(app)
@@ -92,3 +94,39 @@ def test_upload_blocks_path_traversal(monkeypatch, tmp_path):
     # 清理后的文件名只保留 basename，且不含 ".."
     assert ".." not in captured["path"]
     assert captured["path"].endswith("_escape.txt")
+
+
+def test_get_document_not_found():
+    r = client.get(f"/api/v1/documents/{uuid.uuid4()}")
+    assert r.status_code == 404
+
+
+def test_get_document_invalid_uuid():
+    r = client.get("/api/v1/documents/not-a-uuid")
+    assert r.status_code == 422
+
+
+def test_get_document_found(engine):
+    ws_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    with engine.begin() as conn:
+        conn.execute(text(
+            "INSERT INTO workspaces (id, name) VALUES (:id, 't')"
+        ), {"id": str(ws_id)})
+        conn.execute(text(
+            "INSERT INTO documents (id, workspace_id, title, source_type, storage_path, status) "
+            "VALUES (:id, :ws, '测试文档', 'test', '/tmp/x', 'completed')"
+        ), {"id": str(doc_id), "ws": str(ws_id)})
+    try:
+        r = client.get(f"/api/v1/documents/{doc_id}")
+        assert r.status_code == 200
+        data = r.json()["data"]
+        assert data["document_id"] == str(doc_id)
+        assert data["title"] == "测试文档"
+        assert data["status"] == "completed"
+        assert data["error_message"] is None
+        assert data["created_at"]
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM documents WHERE id = :id"), {"id": str(doc_id)})
+            conn.execute(text("DELETE FROM workspaces WHERE id = :id"), {"id": str(ws_id)})
