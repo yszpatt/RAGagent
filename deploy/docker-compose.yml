@@ -1,3 +1,11 @@
+# KnowledgePilot 部署编排（demo）
+# 分工：本文件管后端基础设施（postgres/redis/api/worker）；
+#       前端不进 Compose，用 `cd frontend && npm run dev` 本地运行（:3000 反代到 api:8000）。
+# 首次初始化：docker compose up -d postgres 后执行
+#   docker exec -i <postgres容器名> psql -U kp -d knowledgepilot < backend/sql/schema.sql
+# 模型：api/worker 首次使用会自动下载 bge-m3 + reranker 到容器内
+#   ~/.cache/huggingface（约 4.6GB）；如需复用宿主机已下载的缓存，可给 api/worker
+#   加 volume: - ~/.cache/huggingface:/root/.cache/huggingface
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -7,24 +15,40 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-knowledgepilot}
     ports: ["5432:5432"]
     volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kp} -d ${POSTGRES_DB:-knowledgepilot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
   redis:
     image: redis:7-alpine
     ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
   api:
     build: ../backend
     ports: ["8000:8000"]
-    env_file: [../.env]
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-kp}:${POSTGRES_PASSWORD:-kp}@postgres:5432/${POSTGRES_DB:-knowledgepilot}
       REDIS_URL: redis://redis:6379
-    depends_on: [postgres, redis]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
   worker:
     build: ../backend
     command: ["rq", "worker", "ingestion"]
-    env_file: [../.env]
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-kp}:${POSTGRES_PASSWORD:-kp}@postgres:5432/${POSTGRES_DB:-knowledgepilot}
       REDIS_URL: redis://redis:6379
-    depends_on: [postgres, redis]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 volumes:
   pgdata:
