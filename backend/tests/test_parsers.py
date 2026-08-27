@@ -53,3 +53,18 @@ def test_parse_pdf_multipage(tmp_path):
     assert "第一页内容" in pages[0].text
     assert pages[0].page_number == 1
     assert pages[1].page_number == 2
+
+
+def test_parse_uppercase_extension(tmp_path):
+    f = tmp_path / "DOC.TXT"
+    f.write_text("大写扩展名", encoding="utf-8")
+    pages = parse(str(f))
+    assert len(pages) == 1
+    assert "大写扩展名" in pages[0].text
+
+
+def test_parse_binary_txt_raises_clear_error(tmp_path):
+    f = tmp_path / "bin.txt"
+    f.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
+    with pytest.raises(ValueError, match="UTF-8"):
+        parse(str(f))

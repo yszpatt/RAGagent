@@ -17,4 +17,3 @@ def parse(path: str) -> list[Page]:
     if ext == ".docx":
         from app.ingestion.parsers.docx_parser import parse_docx
         return parse_docx(path)
-    raise ValueError(f"unsupported extension: {ext}")
