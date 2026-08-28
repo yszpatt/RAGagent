@@ -1,6 +1,7 @@
 -- KnowledgePilot 数据库 Schema（demo 版）
 -- 用法: psql -h localhost -U kp -d knowledgepilot -f backend/sql/schema.sql
 -- 说明: 对应设计文档 §5 数据模型；bge-m3 为 1024 维向量。
+-- 注意: 本文件为 schema 权威来源，修改 models.py 需同步更新（反之亦然）。
 
 CREATE EXTENSION IF NOT EXISTS vector;
 

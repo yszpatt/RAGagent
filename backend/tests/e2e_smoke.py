@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """KnowledgePilot 端到端冒烟测试。
 
+本文件为独立集成测试，按 `python tests/e2e_smoke.py` 运行，勿改名为 test_*.py（避免被 pytest 收集）。
+
 流程：启动 uvicorn + RQ worker → 等待 /health → 上传 txt/md 样例文档 →
 轮询文档状态至 completed → 调用 /chat 断言回答与引用 → 打印 PASS/FAIL 汇总 → 清理进程。
 
@@ -13,6 +15,8 @@
   .venv/bin/python tests/e2e_smoke.py
 """
 import os
+import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -25,13 +29,16 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 VENV_BIN = BACKEND_DIR / ".venv" / "bin"
 BASE_URL = "http://localhost:8000"
 
-# bge-m3 缓存存在时启用 HF 离线模式：避免已下载过的大模型因
+# bge-m3 / bge-reranker 缓存均存在时启用 HF 离线模式：避免已下载过的大模型因
 # hf.co 文件传输被墙/慢而反复触发下载（缓存在本地，离线可直接用）。
-_MODEL_CACHE = Path.home() / ".cache" / "huggingface" / "hub" / "models--BAAI--bge-m3"
-if _MODEL_CACHE.exists() and "KP_E2E_ONLINE" not in os.environ:
+_MODEL_CACHES = [
+    Path.home() / ".cache" / "huggingface" / "hub" / "models--BAAI--bge-m3",
+    Path.home() / ".cache" / "huggingface" / "hub" / "models--BAAI--bge-reranker-v2-m3",
+]
+if all(c.exists() for c in _MODEL_CACHES) and "KP_E2E_ONLINE" not in os.environ:
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
     os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-    print("[setup] 检测到本地 bge-m3 缓存，启用 HF 离线模式（KP_E2E_ONLINE=1 可关闭）")
+    print("[setup] 检测到本地 bge-m3 / bge-reranker 缓存，启用 HF 离线模式（KP_E2E_ONLINE=1 可关闭）")
 HEALTH_RETRY = 30          # /health 就绪最长等待（秒）
 DOC_POLL_TIMEOUT = 180     # 文档处理完成最长等待（秒，bge-m3 首次加载慢）
 POLL_INTERVAL = 3
@@ -67,6 +74,11 @@ class SmokeResult:
             return False
         print("全部通过 ✓")
         return True
+
+
+def _port_in_use(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("localhost", port)) == 0
 
 
 def start_process(cmd, log_path, name):
@@ -157,7 +169,6 @@ def main():
 
     # 前置依赖探测（只提示不自动拉起，避免掩盖失败原因）
     for host, port, name in [("localhost", 5432, "PostgreSQL(kp-pg)"), ("localhost", 6379, "Redis(kp-redis)")]:
-        import socket
         s = socket.socket()
         try:
             s.settimeout(1)
@@ -168,12 +179,18 @@ def main():
         finally:
             s.close()
 
+    # 端口预检：8000 已被占用时直接失败，避免 wait_health 命中既有服务造成误 PASS
+    if _port_in_use(8000):
+        print("[FAIL] 端口 8000 已被占用，请先停止已有服务")
+        sys.exit(1)
+
     result = SmokeResult()
     log_dir = Path(tempfile.gettempdir()) / "kp_e2e"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     procs = []
     log_files = []
+    tmpdir = None
     try:
         # 1) 启动 uvicorn 与 RQ worker
         api_proc, api_log = start_process(
@@ -239,6 +256,9 @@ def main():
                 f.close()
             except Exception:
                 pass
+        # 清理临时样例目录
+        if tmpdir is not None:
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 if __name__ == "__main__":

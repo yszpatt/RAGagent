@@ -76,7 +76,7 @@ docker compose -f deploy/docker-compose.yml up -d postgres redis
 初始化数据库表结构：
 
 ```bash
-docker exec -i kp-pg psql -U kp -d knowledgepilot < backend/sql/schema.sql
+docker compose exec -T postgres psql -U kp -d knowledgepilot < backend/sql/schema.sql
 ```
 
 ### 2. 安装后端
@@ -175,7 +175,7 @@ cd backend
 
 ## 已知限制（demo 范围）
 
-- **无鉴权**：chat 的角色由请求体传入（demo 写死 admin/manager/employee），权限过滤逻辑在检索前 SQL 中生效，但没有登录体系。
+- **无鉴权**：角色在服务端写死（admin/manager/employee），demo 未实现鉴权。权限过滤逻辑在检索前 SQL 中生效，但没有登录体系。
 - **无 OCR**：扫描件无法提取文本，pipeline 会标记 `failed`（预留 marker 接口）。
 - **无 SSE 流式**：chat 为同步返回；前端轮询文档状态而非 SSE。
 - **LLM 生成未启用**：回答为"根据资料：{top chunk 内容前缀}"，正式 LLM 生成（Ollama）已预留 Provider 抽象，后续接入。
@@ -192,6 +192,6 @@ docker compose -f deploy/docker-compose.yml up -d --build
 
 - `postgres`（pgvector）、`redis` 由镜像提供；
 - `api` / `worker` 基于 `backend/Dockerfile`（python:3.11-slim + `pip install .`）构建；
-- `api` 容器启动后需手动执行 schema 初始化：`docker exec -i <postgres容器> psql -U kp -d knowledgepilot < backend/sql/schema.sql`（首次），并确认模型缓存已挂载/可下载。
+- `api` 容器启动后需手动执行 schema 初始化：`docker compose exec -T postgres psql -U kp -d knowledgepilot < backend/sql/schema.sql`（首次），并确认模型缓存已挂载/可下载。
 
 **前端不打包进 Compose**：demo 阶段前端用 `npm run dev` 本地运行（3000 端口，反代到 API）。两种模式分工：**Compose 管后端基础设施**，**前端本地 dev**。如需把前端也容器化，可为其加一个基于 `node:20` 的 `next build && next start` 镜像并 `depends_on: api`。
