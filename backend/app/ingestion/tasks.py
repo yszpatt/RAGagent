@@ -9,5 +9,5 @@ redis_conn = Redis.from_url(settings.redis_url)
 queue = Queue("ingestion", connection=redis_conn)
 
 
-def enqueue_ingestion(path: str, document_id, workspace_id=None):
-    return queue.enqueue(run_ingestion, path, document_id, workspace_id)
+def enqueue_ingestion(path: str, document_id, workspace_id=None, roles=None):
+    return queue.enqueue(run_ingestion, path, document_id, workspace_id, roles)

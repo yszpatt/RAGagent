@@ -60,13 +60,19 @@ export const demoConversations: Conversation[] = [
 ];
 
 /** 演示问答：按关键词返回预设回答，否则触发无答案兜底 */
-export function demoAsk(query: string): { answer: string; no_answer: boolean; citations: Array<{ chunk_id: string; page: number | null }> } {
+export function demoAsk(query: string): {
+  answer: string;
+  no_answer: boolean;
+  citations: Array<{ chunk_id: string; page: number | null }>;
+  conversation_id: null;
+} {
   const q = query.toLowerCase();
   if (/违约|合同|逾期/.test(q)) {
     return {
       answer: demoConversations[0].turns[0].answer,
       no_answer: false,
       citations: demoConversations[0].turns[0].citations,
+      conversation_id: null,
     };
   }
   if (/报销|住宿|差旅/.test(q)) {
@@ -74,6 +80,7 @@ export function demoAsk(query: string): { answer: string; no_answer: boolean; ci
       answer: demoConversations[1].turns[0].answer,
       no_answer: false,
       citations: demoConversations[1].turns[0].citations,
+      conversation_id: null,
     };
   }
   if (/年假|休假|考勤/.test(q)) {
@@ -84,12 +91,14 @@ export function demoAsk(query: string): { answer: string; no_answer: boolean; ci
         { chunk_id: "demo-c-301", page: 15 },
         { chunk_id: "demo-c-302", page: 16 },
       ],
+      conversation_id: null,
     };
   }
   return {
     answer: "未找到相关信息，请尝试换个问法。",
     no_answer: true,
     citations: [],
+    conversation_id: null,
   };
 }
 

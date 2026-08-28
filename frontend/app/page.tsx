@@ -13,11 +13,13 @@ import { EmptyState } from "@/components/ui/page";
 import { Badge, PreviewTag } from "@/components/ui/badge";
 import { useDemoMode } from "@/lib/demo-context";
 import { demoAsk, demoConversations } from "@/lib/demo-data";
-import { ask as askBackend } from "@/lib/api";
+import {
+  ask as askBackend,
+  fetchMessages,
+  listConversations,
+} from "@/lib/api";
 import type { Citation, Conversation, SourceRef, Turn } from "@/lib/types";
 import { cn, newId } from "@/lib/utils";
-
-const STORE_KEY = "kp.conversations.v1";
 
 const SAMPLE_QUESTIONS = [
   "供应商合同里违约金条款是怎么约定的？",
@@ -25,15 +27,39 @@ const SAMPLE_QUESTIONS = [
   "年假最多可以顺延到什么时候？",
 ];
 
-function loadConversations(): Conversation[] {
-  try {
-    const raw = window.localStorage.getItem(STORE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Conversation[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+/** 后端消息序列（user/assistant 交替）→ 前端问答回合 */
+function messagesToTurns(
+  msgs: Array<{
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    citations: Citation[] | null;
+    no_answer: boolean;
+    created_at: string;
+  }>,
+): Turn[] {
+  const turns: Turn[] = [];
+  let current: Turn | null = null;
+  for (const m of msgs) {
+    if (m.role === "user") {
+      current = {
+        id: m.id,
+        query: m.content,
+        answer: "",
+        no_answer: false,
+        citations: [],
+        at: Date.parse(m.created_at) || Date.now(),
+      };
+      turns.push(current);
+    } else {
+      if (!current) continue; // 缺少配对 user 消息的脏数据，跳过
+      current.answer = m.content;
+      current.no_answer = m.no_answer;
+      current.citations = m.citations ?? [];
+      current.at = Date.parse(m.created_at) || current.at;
+    }
   }
+  return turns;
 }
 
 export default function ChatPage() {
@@ -52,14 +78,24 @@ export default function ChatPage() {
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // 真实会话本地持久化
-  useEffect(() => {
-    setRealConvs(loadConversations());
-  }, []);
+  // 真实模式：会话列表来自后端；演示模式：内存 fixtures
   useEffect(() => {
     if (demo) return;
-    window.localStorage.setItem(STORE_KEY, JSON.stringify(realConvs));
-  }, [realConvs, demo]);
+    listConversations()
+      .then((list) =>
+        setRealConvs(
+          list.map((c) => ({
+            id: c.id,
+            title: c.title || "（无标题会话）",
+            turns: [], // 历史按需加载
+            updatedAt: Date.parse(c.last_message_at ?? c.created_at) || 0,
+          })),
+        ),
+      )
+      .catch(() => {
+        /* 后端瞬断：保留当前列表 */
+      });
+  }, [demo]);
 
   // 切换模式时回到新会话，避免两套数据混排
   useEffect(() => {
@@ -74,6 +110,26 @@ export default function ChatPage() {
     [convs, activeId],
   );
   const turns = activeConv ? activeConv.turns : draftTurns;
+
+  // 选中未加载历史的会话 → 拉取消息
+  useEffect(() => {
+    if (demo || !activeConv || activeConv.turns.length > 0) return;
+    let cancelled = false;
+    fetchMessages(activeConv.id)
+      .then((msgs) => {
+        if (cancelled) return;
+        const loaded = messagesToTurns(msgs);
+        setRealConvs((prev) =>
+          prev.map((c) => (c.id === activeConv.id ? { ...c, turns: loaded } : c)),
+        );
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "加载会话失败");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [demo, activeConv]);
 
   // 打字机：新答案到达后按帧推进
   useEffect(() => {
@@ -112,20 +168,20 @@ export default function ChatPage() {
   }, [turns.length, loading]);
 
   const commitTurn = useCallback(
-    (turn: Turn) => {
+    (turn: Turn, convId: string | null) => {
       if (demo) {
         // 演示问答追加进内存中的演示会话（不持久化）
         setDemoConvos((prev) => {
-          const target = activeId && prev.find((c) => c.id === activeId);
+          const target = convId && prev.find((c) => c.id === convId);
           if (target) {
             return prev.map((c) =>
-              c.id === activeId
+              c.id === convId
                 ? { ...c, turns: [...c.turns, turn], updatedAt: turn.at }
                 : c,
             );
           }
           const created: Conversation = {
-            id: newId("demo"),
+            id: convId ?? newId("demo"),
             title: turn.query.slice(0, 18),
             turns: [turn],
             updatedAt: turn.at,
@@ -133,29 +189,31 @@ export default function ChatPage() {
           setActiveId(created.id);
           return [created, ...prev];
         });
-      } else {
-        setRealConvs((prev) => {
-          const target = activeId && prev.find((c) => c.id === activeId);
-          if (target) {
-            return prev.map((c) =>
-              c.id === activeId
-                ? { ...c, turns: [...c.turns, turn], updatedAt: turn.at }
-                : c,
-            );
-          }
-          const created: Conversation = {
-            id: newId("c"),
-            title: turn.query.slice(0, 18),
-            turns: [turn],
-            updatedAt: turn.at,
-          };
-          setActiveId(created.id);
-          return [created, ...prev];
-        });
+        setDraftTurns([]);
+        return;
       }
+      // 真实模式：后端已持久化，本地只做展示同步
+      setRealConvs((prev) => {
+        const target = convId && prev.find((c) => c.id === convId);
+        if (target) {
+          return prev.map((c) =>
+            c.id === convId
+              ? { ...c, turns: [...c.turns, turn], updatedAt: turn.at }
+              : c,
+          );
+        }
+        const created: Conversation = {
+          id: convId ?? newId("c"),
+          title: turn.query.slice(0, 18),
+          turns: [turn],
+          updatedAt: turn.at,
+        };
+        setActiveId(created.id);
+        return [created, ...prev];
+      });
       setDraftTurns([]);
     },
-    [demo, activeId],
+    [demo],
   );
 
   async function handleAsk() {
@@ -179,7 +237,9 @@ export default function ChatPage() {
     ]);
 
     try {
-      const res = demo ? await withDelay(demoAsk(query), 900) : await askBackend(query);
+      const res = demo
+        ? await withDelay(demoAsk(query), 900)
+        : await askBackend(query, demo ? undefined : activeId ?? undefined);
       const turn: Turn = {
         id: placeholderId,
         query,
@@ -188,7 +248,7 @@ export default function ChatPage() {
         citations: res.citations ?? [],
         at: Date.now(),
       };
-      commitTurn(turn);
+      commitTurn(turn, res.conversation_id ?? (demo ? null : activeId));
       if (!res.no_answer) {
         setRevealedCount(0);
         setTypingTurnId(turn.id);

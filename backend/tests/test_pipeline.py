@@ -25,6 +25,9 @@ def fake_embedding(monkeypatch):
 def clean_tables(engine):
     # 清空依赖表（FK 顺序），保证测试隔离
     with engine.begin() as conn:
+        conn.execute(text("DELETE FROM audit_logs"))
+        conn.execute(text("DELETE FROM messages"))
+        conn.execute(text("DELETE FROM conversations"))
         conn.execute(text("DELETE FROM chunks"))
         conn.execute(text("DELETE FROM document_permissions"))
         conn.execute(text("DELETE FROM documents"))
@@ -32,6 +35,9 @@ def clean_tables(engine):
         conn.execute(text("DELETE FROM workspaces"))
     yield
     with engine.begin() as conn:
+        conn.execute(text("DELETE FROM audit_logs"))
+        conn.execute(text("DELETE FROM messages"))
+        conn.execute(text("DELETE FROM conversations"))
         conn.execute(text("DELETE FROM chunks"))
         conn.execute(text("DELETE FROM document_permissions"))
         conn.execute(text("DELETE FROM documents"))

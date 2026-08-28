@@ -152,10 +152,13 @@ export function sourceFromCitation(
     };
     return { ...base, ref: refLabel(index) };
   }
+  // 真实引用：后端 _enrich_citations 回填标题/节/摘录（缺失时抽屉展示规划说明）
   return {
     ref: refLabel(index),
-    title: "知识库引用",
+    title: citation.document_title || "知识库引用",
     page: citation.page,
+    section: citation.section ?? null,
+    excerpt: citation.excerpt ?? undefined,
     chunkId: citation.chunk_id,
   };
 }

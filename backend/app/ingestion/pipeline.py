@@ -43,6 +43,10 @@ def _resolve_workspace_id() -> uuid.UUID:
 def _upsert_document(doc_id: uuid.UUID, workspace_id: uuid.UUID, path: str) -> None:
     """先落 documents 行，保证 add_chunk 插入 document_permissions 时 FK 成立。"""
     title = Path(path).name
+    # 上传文件按 f"{doc_id}_{filename}" 落盘，展示标题剥离 uuid 前缀
+    prefix = f"{doc_id}_"
+    if title.startswith(prefix):
+        title = title[len(prefix):]
     source_type = Path(path).suffix.lower().lstrip(".") or "unknown"
     with SessionLocal() as s:
         s.execute(text("""
@@ -75,11 +79,13 @@ def run_ingestion(
     path: str,
     document_id: uuid.UUID | None = None,
     workspace_id: uuid.UUID | None = None,
+    roles: list[str] | None = None,
 ) -> uuid.UUID:
     """解析→切块→向量化→批量入库。返回 document_id。
 
-    workspace_id 缺省时自动解析/创建默认 workspace；失败时把
-    documents.status 标记为 failed、清空残留 chunk 并重抛，由 RQ 记录任务失败。
+    workspace_id 缺省时自动解析/创建默认 workspace；roles 指定文档可见角色
+    （缺省全角色开放）。失败时把 documents.status 标记为 failed、清空残留
+    chunk 并重抛，由 RQ 记录任务失败。
     """
     doc_id = document_id or uuid.uuid4()
     if workspace_id is None:
@@ -104,7 +110,7 @@ def run_ingestion(
         if len(batch) == 0:
             raise NoTextExtractedError()
         # 单事务批量入库：任一失败整体回滚，不产生孤儿 chunk。
-        store.add_chunks(doc_id, batch)
+        store.add_chunks(doc_id, batch, roles=roles)
         _mark_document_status(doc_id, "completed")
     except Exception as e:
         # 状态写入与清理都可能在 DB 本身宕机时失败：保护之，确保原始异常被重抛。

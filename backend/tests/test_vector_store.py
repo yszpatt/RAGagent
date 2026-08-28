@@ -13,6 +13,9 @@ def clean_tables(engine):
     # 清空依赖表（FK 顺序），保证测试隔离
     from sqlalchemy import text
     with engine.begin() as conn:
+        conn.execute(text("DELETE FROM audit_logs"))
+        conn.execute(text("DELETE FROM messages"))
+        conn.execute(text("DELETE FROM conversations"))
         conn.execute(text("DELETE FROM chunks"))
         conn.execute(text("DELETE FROM document_permissions"))
         conn.execute(text("DELETE FROM documents"))
@@ -20,6 +23,9 @@ def clean_tables(engine):
         conn.execute(text("DELETE FROM workspaces"))
     yield
     with engine.begin() as conn:
+        conn.execute(text("DELETE FROM audit_logs"))
+        conn.execute(text("DELETE FROM messages"))
+        conn.execute(text("DELETE FROM conversations"))
         conn.execute(text("DELETE FROM chunks"))
         conn.execute(text("DELETE FROM document_permissions"))
         conn.execute(text("DELETE FROM documents"))
@@ -118,3 +124,32 @@ def test_search_top_k_limits_results(store, engine, clean_tables):
     results = store.search([0.3] * 1024, top_k=2)
     assert len(results) == 2
     assert results[0]["content"] == "内容3"  # 最近
+
+
+def test_fetch_chunk_details(store, engine, clean_tables):
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        ws_id = conn.execute(text(
+            "INSERT INTO workspaces (id, name) VALUES (:id, 't') RETURNING id"
+        ), {"id": str(uuid.uuid4())}).scalar()
+        doc_id = conn.execute(text(
+            "INSERT INTO documents (id, workspace_id, title, source_type, storage_path, status) "
+            "VALUES (:id, :ws, '供应商框架协议', 'pdf', '/tmp/x', 'completed') RETURNING id"
+        ), {"id": str(uuid.uuid4()), "ws": str(ws_id)}).scalar()
+
+    store.add_chunk(doc_id, "违约金为合同总价款的10%，" + "细则。" * 150, 0, 7, [0.5] * 1024)
+    results = store.search([0.5] * 1024, top_k=1)
+    chunk_id = str(results[0]["id"])
+
+    details = store.fetch_chunk_details([chunk_id, "not-a-uuid"])
+    assert chunk_id in details
+    d = details[chunk_id]
+    assert d["page"] == 7
+    assert "违约金" in d["excerpt"]
+    assert d["excerpt"].endswith("…")  # 超 200 字截断
+    assert d["document_title"] == "供应商框架协议"
+
+    # 查不到 / 非法 / 空输入 → 空结果
+    assert store.fetch_chunk_details([uuid.uuid4()]) == {}
+    assert store.fetch_chunk_details(["not-a-uuid"]) == {}
+    assert store.fetch_chunk_details([]) == {}

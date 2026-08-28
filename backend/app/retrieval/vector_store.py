@@ -40,6 +40,38 @@ class VectorStore:
             "embedding": embedding,
         }], roles=roles)
 
+    def fetch_chunk_details(self, chunk_ids) -> dict:
+        """按 chunk id 批量取引用详情（原文摘录/页码/节标题/文档标题）。
+
+        返回 {chunk_id_str: {excerpt, page, section, document_title}}；
+        非法 id 与查不到的 id 不出现在结果中，调用方按需回退。
+        """
+        ids = []
+        for cid in chunk_ids or []:
+            try:
+                ids.append(uuid.UUID(str(cid)))
+            except (ValueError, TypeError):
+                continue
+        if not ids:
+            return {}
+        with SessionLocal() as s:
+            rows = s.execute(text("""
+                SELECT c.id, c.content, c.page_number, c.section_title, d.title
+                FROM chunks c
+                JOIN documents d ON c.document_id = d.id
+                WHERE c.id IN :ids
+            """), {"ids": tuple(ids)}).fetchall()
+        details = {}
+        for r in rows:
+            content = r[1] or ""
+            details[str(r[0])] = {
+                "excerpt": content[:200] + ("…" if len(content) > 200 else ""),
+                "page": r[2],
+                "section": r[3],
+                "document_title": r[4],
+            }
+        return details
+
     def search(self, query_vec: list[float], top_k: int = 5, roles: list[str] | None = None,
                workspace_id=None):
         # 未指定 roles（None，历史调用方）沿用默认开放角色，保持既有接口行为；

@@ -8,12 +8,19 @@ export type DocStatus = "pending" | "processing" | "completed" | "failed";
 export interface Citation {
   chunk_id: string;
   page: number | null;
+  /** 以下字段由后端详情回填（_enrich_citations），可能缺失 */
+  document_title?: string | null;
+  section?: string | null;
+  excerpt?: string | null;
 }
 
 export interface ChatResponse {
   answer: string;
   no_answer: boolean;
   citations: Citation[];
+  /** 后端已持久化时返回，前端用于续聊与列表刷新 */
+  conversation_id?: string | null;
+  message_id?: string | null;
 }
 
 /** 一轮问答 */
@@ -43,6 +50,8 @@ export interface DocumentMeta {
   roles: Role[];
   uploadedAt: number;
   sizeLabel?: string;
+  /** 已入库 chunk 数（后端列表接口提供） */
+  chunkCount?: number;
 }
 
 /** 来源查看器中的单条引用 */

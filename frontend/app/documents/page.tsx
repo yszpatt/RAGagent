@@ -1,7 +1,7 @@
 "use client";
 
 // 知识库页：上传（真实接入 + 状态轮询）与文档列表。
-// 真实模式：本机 localStorage 记录上传过的文档（后端暂无列表接口，规划中 GET /documents）；
+// 真实模式：数据来自后端 GET /documents（列表/删除/重新解析均为真实接口）；
 // 演示模式：展示占位文档集，可模拟接入/删除。
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -16,77 +16,72 @@ import {
 } from "@/components/documents/upload-zone";
 import { useDemoMode } from "@/lib/demo-context";
 import { demoDocuments } from "@/lib/demo-data";
-import { fetchDocument, uploadDocument } from "@/lib/api";
+import {
+  deleteDocument,
+  fetchDocument,
+  listDocuments,
+  reingestDocument,
+  uploadDocument,
+} from "@/lib/api";
 import { Time } from "@/components/ui/time";
 import type { DocumentMeta } from "@/lib/types";
 import { cn, newId, ROLE_LABELS } from "@/lib/utils";
 
-const STORE_KEY = "kp.documents.v1";
 const POLL_INTERVAL = 2000;
 const POLL_MAX = 60;
 
 type Filter = "all" | "processing" | "completed" | "failed";
 
-function loadDocs(): DocumentMeta[] {
-  try {
-    const raw = window.localStorage.getItem(STORE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as DocumentMeta[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
 export default function DocumentsPage() {
   const { demo } = useDemoMode();
   const [realDocs, setRealDocs] = useState<DocumentMeta[]>([]);
+  const [listError, setListError] = useState("");
   const [demoDocs, setDemoDocs] = useState<DocumentMeta[]>(demoDocuments);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   // 两步删除确认：首次点击进入待确认态，3 秒未确认自动还原
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-  useEffect(() => {
-    setRealDocs(loadDocs());
-  }, []);
-
-  useEffect(() => {
-    if (demo) return;
-    window.localStorage.setItem(STORE_KEY, JSON.stringify(realDocs));
-  }, [realDocs, demo]);
-
-  // 真实模式：刷新未完成文档的状态（页面打开时各轮询一次）
-  useEffect(() => {
-    if (demo) return;
-    realDocs
-      .filter((d) => d.status === "pending" || d.status === "processing")
-      .forEach((d) => void pollStatus(d.id));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demo]);
-
-  const pollStatus = useCallback(async (docId: string) => {
-    for (let i = 0; i < POLL_MAX; i++) {
-      await sleep(POLL_INTERVAL);
-      try {
-        const data = await fetchDocument(docId);
-        setRealDocs((prev) =>
-          prev.map((d) =>
-            d.id === docId
-              ? {
-                  ...d,
-                  status: data.status,
-                  errorMessage: data.error_message,
-                }
-              : d,
-          ),
-        );
-        if (data.status === "completed" || data.status === "failed") return;
-      } catch {
-        // 网络抖动继续轮询
-      }
+  const refreshList = useCallback(async () => {
+    try {
+      const docs = await listDocuments();
+      setRealDocs(docs);
+      setListError("");
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : "获取文档列表失败");
     }
   }, []);
+
+  // 真实模式：以后端列表为唯一数据源
+  useEffect(() => {
+    if (demo) return;
+    void refreshList();
+  }, [demo, refreshList]);
+
+  const pollStatus = useCallback(
+    async (docId: string) => {
+      for (let i = 0; i < POLL_MAX; i++) {
+        await sleep(POLL_INTERVAL);
+        try {
+          const data = await fetchDocument(docId);
+          if (data.status === "completed" || data.status === "failed") {
+            setQueue((q) =>
+              q.map((it) =>
+                it.key.startsWith(docId)
+                  ? { ...it, state: data.status === "completed" ? ("done" as const) : ("failed" as const), message: data.error_message ?? undefined }
+                  : it,
+              ),
+            );
+            void refreshList();
+            return;
+          }
+        } catch {
+          // 网络抖动继续轮询
+        }
+      }
+    },
+    [refreshList],
+  );
 
   const handleFileQueued = useCallback(
     (file: File, key: string, rejected: boolean) => {
@@ -97,7 +92,6 @@ export default function DocumentsPage() {
         ]);
         return;
       }
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "txt";
       if (demo) {
         // 演示：本地模拟接入流程
         setQueue((q) => [
@@ -114,11 +108,10 @@ export default function DocumentsPage() {
             {
               id: newId("demo"),
               title: file.name,
-              ext,
+              ext: file.name.split(".").pop()?.toLowerCase() ?? "txt",
               status: "completed",
               roles: ["admin", "manager", "employee"],
               uploadedAt: Date.now(),
-              sizeLabel: undefined,
             },
             ...prev,
           ]);
@@ -129,32 +122,23 @@ export default function DocumentsPage() {
       // 真实上传
       setQueue((q) => [
         ...q,
-        { key, name: file.name, size: file.size, state: "uploading" },
+        { key: `${key}#${file.name}`, name: file.name, size: file.size, state: "uploading" },
       ]);
       (async () => {
+        const queueKey = `${key}#${file.name}`;
         try {
           const res = await uploadDocument(file);
           setQueue((q) =>
             q.map((it) =>
-              it.key === key ? { ...it, state: "parsing" } : it,
+              it.key === queueKey ? { ...it, key: res.document_id, state: "parsing" } : it,
             ),
           );
-          setRealDocs((prev) => [
-            {
-              id: res.document_id,
-              title: file.name,
-              ext,
-              status: "pending",
-              roles: ["admin", "manager", "employee"],
-              uploadedAt: Date.now(),
-            },
-            ...prev,
-          ]);
           void pollStatus(res.document_id);
+          void refreshList();
         } catch (e) {
           setQueue((q) =>
             q.map((it) =>
-              it.key === key
+              it.key === queueKey
                 ? {
                     ...it,
                     state: "failed",
@@ -166,8 +150,28 @@ export default function DocumentsPage() {
         }
       })();
     },
-    [demo, pollStatus],
+    [demo, pollStatus, refreshList],
   );
+
+  async function handleDelete(doc: DocumentMeta) {
+    try {
+      await deleteDocument(doc.id);
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : "删除失败");
+    }
+    setPendingDeleteId(null);
+    void refreshList();
+  }
+
+  async function handleReingest(doc: DocumentMeta) {
+    try {
+      await reingestDocument(doc.id);
+      void pollStatus(doc.id);
+      void refreshList();
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : "重新解析失败");
+    }
+  }
 
   const docs = demo ? demoDocs : realDocs;
   const counts = useMemo(
@@ -193,13 +197,21 @@ export default function DocumentsPage() {
       <PageHeader
         title="知识库"
         description={
-          <>
-            上传的文档经解析、切块、向量化后进入检索范围。
-            {!demo && " 已上传列表保存在本机浏览器。"}
-          </>
+          demo
+            ? "演示环境：上传与列表均为模拟流程。"
+            : "上传的文档经解析、切块、向量化后进入检索范围。"
         }
         actions={demo ? <PreviewTag label="演示数据" /> : undefined}
       />
+
+      {listError && (
+        <p
+          role="alert"
+          className="mb-4 rounded-lg border border-seal/30 bg-seal-wash px-4 py-3 text-[13px] leading-5 text-seal-deep"
+        >
+          {listError}
+        </p>
+      )}
 
       <UploadZone
         demo={demo}
@@ -254,12 +266,13 @@ export default function DocumentsPage() {
           />
         ) : (
           <div className="overflow-x-auto rounded-xl border border-line bg-paper">
-            <table className="w-full min-w-[640px] text-left text-[13px]">
+            <table className="w-full min-w-[680px] text-left text-[13px]">
               <thead>
                 <tr className="border-b border-line text-xs text-ink-faint">
                   <th className="px-4 py-2.5 font-medium">文档</th>
                   <th className="px-4 py-2.5 font-medium">可见范围</th>
                   <th className="px-4 py-2.5 font-medium">上传时间</th>
+                  <th className="px-4 py-2.5 text-right font-medium">块数</th>
                   <th className="px-4 py-2.5 font-medium">状态</th>
                   <th className="px-4 py-2.5 text-right font-medium">操作</th>
                 </tr>
@@ -279,6 +292,7 @@ export default function DocumentsPage() {
                       </p>
                       <p className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-ink-faint">
                         <span className="uppercase">{d.ext}</span>
+                        {d.sizeLabel && <span>{d.sizeLabel}</span>}
                         {d.errorMessage && (
                           <span className="font-sans text-seal">
                             {d.errorMessage}
@@ -296,60 +310,29 @@ export default function DocumentsPage() {
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-ink-soft">
                       <Time ms={d.uploadedAt} />
                     </td>
+                    <td className="px-4 py-3 text-right font-mono text-xs text-ink-soft">
+                      {d.chunkCount ?? "—"}
+                    </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={d.status} />
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        {demo ? (
-                          <>
-                            <IconAction
-                              label="重新解析（演示）"
-                              onClick={() => {
-                                setDemoDocs((prev) =>
-                                  prev.map((x) =>
-                                    x.id === d.id
-                                      ? { ...x, status: "processing", errorMessage: null }
-                                      : x,
-                                  ),
-                                );
-                                setTimeout(() => {
-                                  setDemoDocs((prev) =>
-                                    prev.map((x) =>
-                                      x.id === d.id
-                                        ? { ...x, status: "completed" }
-                                        : x,
-                                    ),
-                                  );
-                                }, 2000);
-                              }}
-                            >
-                              <RotateCcw size={13} />
-                            </IconAction>
-                            <IconAction
-                              label="删除（演示）"
-                              pending={pendingDeleteId === d.id}
-                              onPendingChange={(on) =>
-                                setPendingDeleteId(on ? d.id : null)
-                              }
-                              onConfirm={() => {
-                                setDemoDocs((prev) =>
-                                  prev.filter((x) => x.id !== d.id),
-                                );
-                                setPendingDeleteId(null);
-                              }}
-                            >
-                              <Trash2 size={13} />
-                            </IconAction>
-                          </>
-                        ) : (
-                          <span
-                            className="cursor-help pr-1 text-[11px] text-ink-faint"
-                            title="删除/重传接口规划中（DELETE /documents/{id}）；当前可在本机移除记录后重新上传"
-                          >
-                            接口规划中
-                          </span>
-                        )}
+                        <IconAction
+                          label="重新解析"
+                          disabled={d.status === "processing" || d.status === "pending"}
+                          onClick={() => void handleReingest(d)}
+                        >
+                          <RotateCcw size={13} />
+                        </IconAction>
+                        <IconAction
+                          label="删除"
+                          pending={pendingDeleteId === d.id}
+                          onPendingChange={(on) => setPendingDeleteId(on ? d.id : null)}
+                          onConfirm={() => void handleDelete(d)}
+                        >
+                          <Trash2 size={13} />
+                        </IconAction>
                       </div>
                     </td>
                   </tr>
@@ -357,12 +340,6 @@ export default function DocumentsPage() {
               </tbody>
             </table>
           </div>
-        )}
-
-        {!demo && realDocs.length > 0 && (
-          <p className="mt-3 text-[11px] leading-4 text-ink-faint">
-            权限列当前展示后端默认值（全角色可见）。文档级可见范围设置与管理接口规划中。
-          </p>
         )}
       </div>
     </div>
@@ -375,6 +352,7 @@ function IconAction({
   pending,
   onPendingChange,
   onConfirm,
+  disabled,
   children,
 }: {
   label: string;
@@ -383,6 +361,7 @@ function IconAction({
   pending?: boolean;
   onPendingChange?: (pending: boolean) => void;
   onConfirm?: () => void;
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   function handleClick() {
@@ -400,13 +379,15 @@ function IconAction({
   return (
     <button
       onClick={handleClick}
-      title={pending ? "再次点击确认删除" : label}
-      aria-label={pending ? "再次点击确认删除" : label}
+      disabled={disabled}
+      title={pending ? `再次点击确认${label}` : label}
+      aria-label={pending ? `再次点击确认${label}` : label}
       className={cn(
         "rounded p-1.5 transition-colors",
         pending
           ? "bg-seal text-paper hover:bg-seal-deep"
           : "text-ink-soft hover:bg-porcelain hover:text-ink",
+        disabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
       )}
     >
       {children}
