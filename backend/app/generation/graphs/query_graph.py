@@ -1,3 +1,4 @@
+import asyncio
 from typing import TypedDict
 
 from langgraph.graph import StateGraph, END
@@ -62,6 +63,8 @@ def build_query_graph():
         return state
 
     def generate(state: QueryState) -> QueryState:
+        from app.generation.providers import get_llm
+
         top = state["reranked"][0] if state["reranked"] else None
         if top is None or should_no_answer(top["score"], threshold=settings.rerank_threshold):
             state["no_answer"] = True
@@ -69,9 +72,23 @@ def build_query_graph():
             state["citations"] = []
         else:
             state["no_answer"] = False
-            state["answer"] = f"根据资料：{top['chunk']['content'][:200]}"
+            # 组装上下文（top 5 块）供 LLM 回答，带页码引用
+            context = "\n\n".join(
+                f"[{i+1}] (第{r['chunk'].get('page_number') or '?'}页) {r['chunk']['content']}"
+                for i, r in enumerate(state["reranked"][:5])
+            )
+            llm = get_llm()
+            try:
+                # 图节点为同步，invoke 在 API 层经 run_in_threadpool 执行（该线程无事件循环），
+                # 故 asyncio.run 安全；单测直接同步 invoke 同样安全。
+                answer = asyncio.run(llm.generate(state["query"], context))
+            except Exception:
+                # Ollama 未运行等异常 → 降级为 top chunk 回显，保证 demo 永不 500。
+                answer = f"根据资料：{top['chunk']['content'][:200]}"
+            state["answer"] = answer
             state["citations"] = [
-                {"chunk_id": str(top["chunk"]["id"]), "page": top["chunk"]["page_number"]}
+                {"chunk_id": str(r["chunk"]["id"]), "page": r["chunk"].get("page_number")}
+                for r in state["reranked"][:5]
             ]
         return state
 
@@ -83,6 +100,4 @@ def build_query_graph():
     g.add_edge("retrieve", "rerank")
     g.add_edge("rerank", "generate")
     g.add_edge("generate", END)
-    # TODO(Task 8+): 接入 get_llm() 把 top chunk 作为 context 生成正式回答。
-    # 本 Task 按实现计划保持最小版本：直接拼接 top chunk 内容前缀。
     return g.compile()

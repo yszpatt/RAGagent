@@ -24,7 +24,8 @@
 ```
 用户提问(query, roles) → 向量检索 top-10(SQL 里按角色过滤 document_permissions)
   → bge-reranker-v2-m3 精排取前5 → 置信度 ≥ rerank_threshold?
-     是 → 答案 + 引用[{chunk_id, page}]     否 → No-Answer 兜底文案
+     是 → 组装 top-5 上下文 → Ollama LLM 生成回答 + 引用[{chunk_id, page}]
+     否 → No-Answer 兜底文案
 ```
 
 **接入链路**（`app/ingestion/pipeline.py`，RQ 异步）：
@@ -121,6 +122,9 @@ EOF
 
 ### 3. 启动后端 API + Worker（两个进程）
 
+> 可选 — 启动 Ollama 本地 LLM（回答生成）：`ollama pull qwen2.5:7b && ollama serve`
+> 未启动 Ollama 时，回答自动降级为检索片段回显（"根据资料：{top chunk 内容前缀}"），demo 仍可正常演示。
+
 ```bash
 # 终端 1 —— API（端口 8000）
 cd backend && .venv/bin/uvicorn app.main:app --port 8000
@@ -142,7 +146,7 @@ npm run dev        # http://localhost:3000，/api/* 由 next.config 反代到 :8
 1. 打开 http://localhost:3000/upload，上传一份合同（txt/md/pdf/docx 均可），等待状态变为 `completed`。
    - 也可用 API：`curl -X POST http://localhost:8000/api/v1/documents/upload -F "file=@sample.txt"`
    - 轮询状态：`curl http://localhost:8000/api/v1/documents/<document_id>`
-2. 回到首页，提问"违约金是多少？"——若文档含违约金条款，会返回带内容前缀的答案与引用来源（页码）。
+2. 回到首页，提问"违约金是多少？"——若文档含违约金条款，会返回带页码引用的答案。
    - API：`curl -X POST http://localhost:8000/api/v1/chat -H 'Content-Type: application/json' -d '{"query":"违约金是多少？"}'`
 3. 问与知识库无关的问题（如"今天天气怎么样？"）→ 触发 No-Answer 兜底文案。
 
@@ -156,7 +160,7 @@ npm run dev        # http://localhost:3000，/api/* 由 next.config 反代到 :8
 | 向量库 | PostgreSQL + pgvector（HNSW 索引） |
 | Embedding | BAAI/bge-m3（1024 维，本地） |
 | Rerank | BAAI/bge-reranker-v2-m3（本地） |
-| LLM（预留） | Ollama qwen2.5:7b（Provider 抽象，demo 未启用） |
+| LLM | Ollama qwen2.5:7b（回答生成，不可用时自动降级为检索片段回显） |
 | 解析 | pypdf / python-docx / 内置 txt、md |
 | 切块 | 递归切块（保留页码） |
 | 前端 | Next.js 16 + React 19 + Tailwind 4 |
@@ -178,7 +182,7 @@ cd backend
 - **无鉴权**：角色在服务端写死（admin/manager/employee），demo 未实现鉴权。权限过滤逻辑在检索前 SQL 中生效，但没有登录体系。
 - **无 OCR**：扫描件无法提取文本，pipeline 会标记 `failed`（预留 marker 接口）。
 - **无 SSE 流式**：chat 为同步返回；前端轮询文档状态而非 SSE。
-- **LLM 生成未启用**：回答为"根据资料：{top chunk 内容前缀}"，正式 LLM 生成（Ollama）已预留 Provider 抽象，后续接入。
+- **回答依赖本地 Ollama**：回答默认经 Ollama LLM 生成（需本地运行 Ollama + qwen2.5:7b）；Ollama 不可用时自动降级为检索片段回显（"根据资料：{top chunk 内容前缀}"），保证 demo 不中断。
 - **单用户**：无会话持久化（conversations 路由返回空列表）、无多租户交互。
 - **对象存储**：文件存本地 `/tmp/kp_uploads`，未接 S3。
 
