@@ -41,10 +41,11 @@
 ```
 backend/
   app/
-    api/v1/           # documents / chat / conversations 路由
+    api/v1/           # documents / chat / conversations / admin 路由
+    services/         # audit（审计日志写入）/ context（请求上下文）
     core/config.py    # 配置（DATABASE_URL / REDIS_URL / 模型名）
     ingestion/        # parsers / chunkers / pipeline / tasks(RQ)
-    retrieval/        # vector_store.py（pgvector + 检索前权限过滤）
+    retrieval/        # vector_store.py（pgvector + 检索前权限过滤 + 引用详情）
     generation/       # LangGraph query_graph + embedding/reranker/llm providers
     guardrails/       # no_answer 置信度护栏
   sql/schema.sql      # 建表 DDL（对应设计文档 §5）
@@ -52,7 +53,7 @@ backend/
   pyproject.toml      # 依赖（含 uvicorn / rq / sentence-transformers）
   Dockerfile
 frontend/             # Next.js 16 + React 19 + Tailwind 4
-  app/                # / 问答 · /documents 知识库 · /admin/* 看板/权限/审计（预览）
+  app/                # / 问答 · /documents 知识库 · /admin/* 看板/权限/审计（已接 /admin 接口）
   components/         # 应用壳、聊天卷宗条目、来源案卷抽屉、上传区、UI 基础件
   lib/                # api 客户端 / demo 占位数据 / 演示模式上下文
 deploy/docker-compose.yml
@@ -145,6 +146,28 @@ npm install
 npm run dev        # http://localhost:3000，/api/* 由 next.config 反代到 :8000
 ```
 
+## API 接口
+
+后端 Swagger：`http://localhost:8000/docs`（前端 `/api/*` 由 Next.js 反代到该端口）。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/v1/documents/upload` | 上传文档；`role_visibility` 表单字段指定可见角色（逗号分隔），返回 `document_id` / `job_id` |
+| GET | `/api/v1/documents` | 文档列表（含接入状态） |
+| GET | `/api/v1/documents/{id}` | 查询单个文档接入状态（pending / completed / failed） |
+| DELETE | `/api/v1/documents/{id}` | 删除文档 |
+| POST | `/api/v1/documents/{id}/reingest` | 重新接入（重新解析 + 向量化） |
+| PUT | `/api/v1/documents/{id}/permissions` | 设置角色可见范围（`roles` 数组，admin 始终保留） |
+| POST | `/api/v1/chat` | 提问；返回带引用的答案（含原文摘录/页码/节标题），低相关时 `no_answer=true` |
+| GET | `/api/v1/conversations` | 会话列表 |
+| GET | `/api/v1/conversations/{id}/messages` | 会话消息历史（citations 为富化后的 JSONB） |
+| GET | `/api/v1/admin/audit-logs` | 审计日志，支持 `action` / `limit` / `offset` 过滤分页 |
+| GET | `/api/v1/admin/metrics` | 使用指标（文档状态分布、No-Answer 率、引用率） |
+| GET | `/health` | 健康检查 |
+
+> 引用富化在 `POST /chat` 内完成（`_enrich_citations` 按 chunk id 批量取详情），前端无需再调单独的 citations 接口。
+> 管理端接口（`admin/*`）demo 阶段无鉴权，生产环境接入前需补 SSO。
+
 ## 演示走查
 
 1. 打开 <http://localhost:3000/documents>，上传一份合同（txt/md/pdf/docx 均可），等待状态变为 `completed`。
@@ -158,7 +181,9 @@ npm run dev        # http://localhost:3000，/api/* 由 next.config 反代到 :8
 
 ## 前端设计
 
-「档案室」视觉体系：瓷灰底 + 蓝黑墨 + 靛蓝交互，朱砂色只用于「需核验的标注」（引用档号牌、失败状态、预览标记）。问答以卷宗条目呈现（回合编号 + 问/答眉标），引用可点击打开来源案卷抽屉。规划中功能（使用看板、权限矩阵、审计日志、引用内容接口）已提供带占位数据的预览入口，后端接口落地后按页内提示接入。
+「档案室」视觉体系：瓷灰底 + 蓝黑墨 + 靛蓝交互，朱砂色只用于「需核验的标注」（引用档号牌、失败状态、预览标记）。问答以卷宗条目呈现（回合编号 + 问/答眉标），引用可点击打开来源案卷抽屉，摘录/页码/节标题由 `POST /chat` 返回的富化 citations 提供。
+
+`/admin/*` 三个页面（使用看板、权限矩阵、审计日志）已接入后端 `/api/v1/admin/*` 真实接口；后端不可用时自动回落到**演示模式**占位数据。
 
 ## 技术栈
 
@@ -181,7 +206,7 @@ npm run dev        # http://localhost:3000，/api/* 由 next.config 反代到 :8
 
 ```bash
 cd backend
-.venv/bin/pytest                     # 单元测试（49 个，解析/切块/入库/检索/权限/护栏/API）
+.venv/bin/pytest                     # 单元测试（63 个，解析/切块/入库/检索/权限/护栏/API/管理端）
 .venv/bin/python tests/e2e_smoke.py  # 端到端冒烟（真实 bge-m3 + reranker）
 ```
 
@@ -189,12 +214,12 @@ cd backend
 
 ## 已知限制（demo 范围）
 
-- **无鉴权**：角色在服务端写死（admin/manager/employee），demo 未实现鉴权。权限过滤逻辑在检索前 SQL 中生效，但没有登录体系。
+- **无鉴权**：角色在服务端写死（admin/manager/employee），demo 未实现登录体系；权限过滤逻辑在检索前 SQL 中生效。文档可见范围可用 `PUT /documents/{id}/permissions` 调整，但**管理端 `/admin/*` 接口无任何保护**，生产环境接入前必须补 SSO。
 - **无 OCR**：扫描件无法提取文本，pipeline 会标记 `failed`（预留 marker 接口）。
 - **无 SSE 流式**：chat 为同步返回；前端以打字机效果呈现答案，打字为客户端动画而非真流式。
 - **回答依赖本地 Ollama**：回答默认经 Ollama LLM 生成（需本地运行 Ollama + qwen2.5:7b）；Ollama 不可用时自动降级为检索片段回显（"根据资料：{top chunk 内容前缀}"），保证 demo 不中断。
-- **单用户**：会话仅存于浏览器本地（localStorage），后端 conversations 路由仍为空桩、无多租户。
-- **引用内容查看**：来源案卷抽屉的原文摘录仅演示模式可用；真实引用待后端 `GET /chat/{id}/citations` 接口。
+- **单用户 · 无多租户**：会话已落库（chat 会写入 conversations/messages，`GET /conversations` 与 `GET /{id}/messages` 可查），但无用户体系、会话不按用户隔离；前端仍用 localStorage 记住当前会话。
+- **引用内容**：`POST /chat` 已内联富化引用（原文摘录/页码/节标题），来源案卷抽屉在真实模式下可用；**不存在**独立的 `GET /chat/{id}/citations` 接口。
 - **对象存储**：文件存本地 `/tmp/kp_uploads`，未接 S3。
 
 ## 部署（Docker Compose）
