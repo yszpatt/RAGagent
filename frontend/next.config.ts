@@ -7,7 +7,11 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1", "localhost", "192.168.9.57"],
   async rewrites() {
     const backend = process.env.BACKEND_URL ?? "http://localhost:8000";
-    return [{ source: "/api/:path*", destination: `${backend}/api/:path*` }];
+    return [
+      { source: "/api/:path*", destination: `${backend}/api/:path*` },
+      // 前端启动时探测后端是否可达（lib/api.ts checkBackend）
+      { source: "/health", destination: `${backend}/health` },
+    ];
   },
 };
 

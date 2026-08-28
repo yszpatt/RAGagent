@@ -1,9 +1,16 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AppShell } from "@/components/app-shell";
+import { DemoProvider } from "@/lib/demo-context";
 
 export const metadata: Metadata = {
-  title: "KnowledgePilot",
-  description: "企业知识库 RAG 问答",
+  title: "KnowledgePilot · 企业知识库问答",
+  description:
+    "上传文档、自然语言提问，返回带引用溯源的答案；低置信自动兜底，不编造。",
+};
+
+export const viewport = {
+  themeColor: "#f2f4f6",
 };
 
 export default function RootLayout({
@@ -11,27 +18,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh-CN" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">
-        <nav className="border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-          <div className="max-w-3xl mx-auto flex items-center gap-6 px-8 py-3">
-            <a href="/" className="font-bold text-gray-900 dark:text-gray-100">
-              KnowledgePilot
-            </a>
-            <a
-              href="/"
-              className="text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
-            >
-              问答
-            </a>
-            <a
-              href="/upload"
-              className="text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
-            >
-              上传文档
-            </a>
-          </div>
-        </nav>
-        {children}
+      <body className="min-h-full">
+        <DemoProvider>
+          <AppShell>{children}</AppShell>
+        </DemoProvider>
       </body>
     </html>
   );

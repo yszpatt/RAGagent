@@ -1,24 +1,91 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * KnowledgePilot 设计 token ——「档案室」体系
+ * 瓷灰底 + 蓝黑墨 + 靛蓝交互；朱砂（seal）只用于「需核验的标注」：
+ * 引用档号、失败状态、预览标记。语义单一，全站唯一高饱和色。
+ */
+@theme {
+  --color-porcelain: #f2f4f6;
+  --color-paper: #ffffff;
+  --color-ink: #1b2432;
+  --color-ink-soft: #5b6572;
+  --color-ink-faint: #8a94a3;
+  --color-line: #e2e6ea;
+  --color-line-strong: #c9d0d8;
+  --color-indigo: #4055b4;
+  --color-indigo-deep: #33448f;
+  --color-indigo-wash: #eef1fa;
+  --color-seal: #c2402f;
+  --color-seal-deep: #a03325;
+  --color-seal-wash: #fbeeeb;
+  --color-jade: #25795f;
+  --color-jade-wash: #e9f4ef;
+  --color-amber: #9a6700;
+  --color-amber-wash: #fdf4e0;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-display: "Songti SC", "STSong", "Noto Serif CJK SC", "Noto Serif SC",
+    "SimSun", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+    "Courier New", monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background: var(--color-porcelain);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 触控设备：去除双击缩放延迟 */
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-indigo);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* 条目浮现：会话消息、列表行等一次性入场 */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.28s ease-out both;
+}
+
+/* 抽屉滑入 */
+@keyframes slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.slide-in {
+  animation: slide-in 0.22s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .slide-in {
+    animation: none;
+  }
 }

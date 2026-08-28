@@ -51,7 +51,10 @@ backend/
   tests/              # pytest 单测 + e2e_smoke.py
   pyproject.toml      # 依赖（含 uvicorn / rq / sentence-transformers）
   Dockerfile
-frontend/             # Next.js（app/ 目录路由：首页问答、/upload 上传）
+frontend/             # Next.js 16 + React 19 + Tailwind 4
+  app/                # / 问答 · /documents 知识库 · /admin/* 看板/权限/审计（预览）
+  components/         # 应用壳、聊天卷宗条目、来源案卷抽屉、上传区、UI 基础件
+  lib/                # api 客户端 / demo 占位数据 / 演示模式上下文
 deploy/docker-compose.yml
 docs/plans/           # 设计文档与实现计划
 ```
@@ -144,12 +147,18 @@ npm run dev        # http://localhost:3000，/api/* 由 next.config 反代到 :8
 
 ## 演示走查
 
-1. 打开 <http://localhost:3000/upload，上传一份合同（txt/md/pdf/docx> 均可），等待状态变为 `completed`。
+1. 打开 <http://localhost:3000/documents>，上传一份合同（txt/md/pdf/docx 均可），等待状态变为 `completed`。
    - 也可用 API：`curl -X POST http://localhost:8000/api/v1/documents/upload -F "file=@sample.txt"`
    - 轮询状态：`curl http://localhost:8000/api/v1/documents/<document_id>`
-2. 回到首页，提问"违约金是多少？"——若文档含违约金条款，会返回带页码引用的答案。
+2. 回到首页，提问"违约金是多少？"——若文档含违约金条款，会返回带页码引用的答案；点击引用档号牌可打开来源案卷。
    - API：`curl -X POST http://localhost:8000/api/v1/chat -H 'Content-Type: application/json' -d '{"query":"违约金是多少？"}'`
 3. 问与知识库无关的问题（如"今天天气怎么样？"）→ 触发 No-Answer 兜底文案。
+
+> 后端未启动时，前端自动进入**演示模式**（侧栏左下角可手动开关）：问答、知识库、看板/权限/审计均使用占位数据，便于纯前端预览。
+
+## 前端设计
+
+「档案室」视觉体系：瓷灰底 + 蓝黑墨 + 靛蓝交互，朱砂色只用于「需核验的标注」（引用档号牌、失败状态、预览标记）。问答以卷宗条目呈现（回合编号 + 问/答眉标），引用可点击打开来源案卷抽屉。规划中功能（使用看板、权限矩阵、审计日志、引用内容接口）已提供带占位数据的预览入口，后端接口落地后按页内提示接入。
 
 ## 技术栈
 
@@ -164,7 +173,7 @@ npm run dev        # http://localhost:3000，/api/* 由 next.config 反代到 :8
 | LLM       | Ollama qwen2.5:7b（回答生成，不可用时自动降级为检索片段回显） |
 | 解析        | pypdf / python-docx / 内置 txt、md         |
 | 切块        | 递归切块（保留页码）                              |
-| 前端        | Next.js 16 + React 19 + Tailwind 4      |
+| 前端        | Next.js 16 + React 19 + Tailwind 4 + lucide-react |
 
 ## 测试
 
@@ -182,9 +191,10 @@ cd backend
 
 - **无鉴权**：角色在服务端写死（admin/manager/employee），demo 未实现鉴权。权限过滤逻辑在检索前 SQL 中生效，但没有登录体系。
 - **无 OCR**：扫描件无法提取文本，pipeline 会标记 `failed`（预留 marker 接口）。
-- **无 SSE 流式**：chat 为同步返回；前端轮询文档状态而非 SSE。
+- **无 SSE 流式**：chat 为同步返回；前端以打字机效果呈现答案，打字为客户端动画而非真流式。
 - **回答依赖本地 Ollama**：回答默认经 Ollama LLM 生成（需本地运行 Ollama + qwen2.5:7b）；Ollama 不可用时自动降级为检索片段回显（"根据资料：{top chunk 内容前缀}"），保证 demo 不中断。
-- **单用户**：无会话持久化（conversations 路由返回空列表）、无多租户交互。
+- **单用户**：会话仅存于浏览器本地（localStorage），后端 conversations 路由仍为空桩、无多租户。
+- **引用内容查看**：来源案卷抽屉的原文摘录仅演示模式可用；真实引用待后端 `GET /chat/{id}/citations` 接口。
 - **对象存储**：文件存本地 `/tmp/kp_uploads`，未接 S3。
 
 ## 部署（Docker Compose）
@@ -192,7 +202,7 @@ cd backend
 `deploy/docker-compose.yml` 覆盖后端基础设施与 API/Worker 的容器化：
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d d--build
+docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
 - `postgres`（pgvector）、`redis` 由镜像提供；
@@ -200,4 +210,4 @@ docker compose -f deploy/docker-compose.yml up -d d--build
 - `api` 容器启动后需手动执行 schema 初始化：`docker compose exec -T postgres psql -U kp -d knowledgepilot < backend/sql/schema.sql`（首次），并确认模型缓存已挂载/可下载。
 
 **前端不打包进 Compose**：demo 阶段前端用 `npm run dev` 本地运行（3000 端口，反代到 API）。两种模式分工：**Compose 管后端基础设施**，**前端本地 dev**。如需把前端也容器化，可为其加一个基于 `node:20` 的 `next build && next start` 镜像并 `depends_on: api`。
-�
+
