@@ -89,10 +89,11 @@ python -m venv .venv
 ```
 
 首次使用会自动从 HuggingFace 下载模型（约 2.3GB，存于 `~/.cache/huggingface`）：
+
 - `BAAI/bge-m3`（1024 维 embedding）
 - `BAAI/bge-reranker-v2-m3`（精排）
 
-> HF 文件传输被墙时，用 hf-mirror：`export HF_ENDPOINT=https://hf-mirror.com`；
+> HF 文件传输被墙时，用 hf-mirror：`export HF_ENDPOINT=https://hf-mirror.com`；  
 > 或走 ModelScope 下载后按 `snapshots/blobs/refs` 布局手动构造 HF 缓存（见下）。
 
 ```bash
@@ -122,7 +123,7 @@ EOF
 
 ### 3. 启动后端 API + Worker（两个进程）
 
-> 可选 — 启动 Ollama 本地 LLM（回答生成）：`ollama pull qwen2.5:7b && ollama serve`
+> 可选 — 启动 Ollama 本地 LLM（回答生成）：`ollama pull qwen2.5:7b && ollama serve`  
 > 未启动 Ollama 时，回答自动降级为检索片段回显（"根据资料：{top chunk 内容前缀}"），demo 仍可正常演示。
 
 ```bash
@@ -143,7 +144,7 @@ npm run dev        # http://localhost:3000，/api/* 由 next.config 反代到 :8
 
 ## 演示走查
 
-1. 打开 http://localhost:3000/upload，上传一份合同（txt/md/pdf/docx 均可），等待状态变为 `completed`。
+1. 打开 <http://localhost:3000/upload，上传一份合同（txt/md/pdf/docx> 均可），等待状态变为 `completed`。
    - 也可用 API：`curl -X POST http://localhost:8000/api/v1/documents/upload -F "file=@sample.txt"`
    - 轮询状态：`curl http://localhost:8000/api/v1/documents/<document_id>`
 2. 回到首页，提问"违约金是多少？"——若文档含违约金条款，会返回带页码引用的答案。
@@ -152,18 +153,18 @@ npm run dev        # http://localhost:3000，/api/* 由 next.config 反代到 :8
 
 ## 技术栈
 
-| 层 | 选型 |
-|---|---|
-| 后端框架 | FastAPI + Uvicorn |
-| 编排 | LangGraph（问答状态机） |
-| 异步任务 | RQ + Redis |
-| 向量库 | PostgreSQL + pgvector（HNSW 索引） |
-| Embedding | BAAI/bge-m3（1024 维，本地） |
-| Rerank | BAAI/bge-reranker-v2-m3（本地） |
-| LLM | Ollama qwen2.5:7b（回答生成，不可用时自动降级为检索片段回显） |
-| 解析 | pypdf / python-docx / 内置 txt、md |
-| 切块 | 递归切块（保留页码） |
-| 前端 | Next.js 16 + React 19 + Tailwind 4 |
+| 层         | 选型                                      |
+| --------- | --------------------------------------- |
+| 后端框架      | FastAPI + Uvicorn                       |
+| 编排        | LangGraph（问答状态机）                        |
+| 异步任务      | RQ + Redis                              |
+| 向量库       | PostgreSQL + pgvector（HNSW 索引）          |
+| Embedding | BAAI/bge-m3（1024 维，本地）                  |
+| Rerank    | BAAI/bge-reranker-v2-m3（本地）             |
+| LLM       | Ollama qwen2.5:7b（回答生成，不可用时自动降级为检索片段回显） |
+| 解析        | pypdf / python-docx / 内置 txt、md         |
+| 切块        | 递归切块（保留页码）                              |
+| 前端        | Next.js 16 + React 19 + Tailwind 4      |
 
 ## 测试
 
@@ -191,7 +192,7 @@ cd backend
 `deploy/docker-compose.yml` 覆盖后端基础设施与 API/Worker 的容器化：
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d --build
+docker compose -f deploy/docker-compose.yml up -d d--build
 ```
 
 - `postgres`（pgvector）、`redis` 由镜像提供；
@@ -199,3 +200,4 @@ docker compose -f deploy/docker-compose.yml up -d --build
 - `api` 容器启动后需手动执行 schema 初始化：`docker compose exec -T postgres psql -U kp -d knowledgepilot < backend/sql/schema.sql`（首次），并确认模型缓存已挂载/可下载。
 
 **前端不打包进 Compose**：demo 阶段前端用 `npm run dev` 本地运行（3000 端口，反代到 API）。两种模式分工：**Compose 管后端基础设施**，**前端本地 dev**。如需把前端也容器化，可为其加一个基于 `node:20` 的 `next build && next start` 镜像并 `depends_on: api`。
+�
