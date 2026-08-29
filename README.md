@@ -380,13 +380,25 @@ Ollama 取默认 ≈0.8，同一条查询**重复 5 次会出现 1~2 次判定�
    - API：`curl -X POST http://localhost:8000/api/v1/chat -H 'Content-Type: application/json' -d '{"query":"违约金是多少？"}'`
 3. 问与知识库无关的问题（如"今天天气怎么样？"）→ 触发 No-Answer 兜底文案。
 
-> 后端未启动时，前端自动进入**演示模式**（侧栏左下角可手动开关）：问答、知识库、看板/权限/审计均使用占位数据，便于纯前端预览。
+> 后端未启动时，前端自动进入**演示模式**（侧栏左下角可手动开关）：问答、知识库、看板/权限/审计均使用占位数据，便于纯前端预览。可在 `/admin/settings` 调整主题（含暗黑模式）、界面语言、动效与演示身份。
 
 ## 前端设计
 
 「档案室」视觉体系：瓷灰底 + 蓝黑墨 + 靛蓝交互，朱砂色只用于「需核验的标注」（引用档号牌、失败状态、预览标记）。问答以卷宗条目呈现（回合编号 + 问/答眉标），引用可点击打开来源案卷抽屉，摘录/页码/节标题由 `POST /chat` 返回的富化 citations 提供。
 
 `/admin/*` 三个页面（使用看板、权限矩阵、审计日志）已接入后端 `/api/v1/admin/*` 真实接口；后端不可用时自动回落到**演示模式**占位数据。
+
+### 近期前端能力
+
+以下能力均在 demo 阶段完成，均为纯前端（偏好存浏览器 localStorage，不触后端）：
+
+- **暗黑模式**：「深夜书房」深色主题（瓷灰底 `#141920` / 月白字 `#e4e9f1`），通过 Tailwind v4 `@theme` CSS 变量换肤，无刷新切换；通过 `prefers-color-scheme` 自动识别，可手动覆盖。
+- **设置页**（`/admin/settings`，挂在管理下）：分「外观 / 语言与动效 / 当前身份（演示）/ 本地数据 / 关于」五区，可配置主题、界面语言、动画开关、演示身份，并支持清除本地会话记录与恢复默认偏好。
+- **当前用户演示身份**：侧栏底部展示头像 + 姓名 + 角色徽章（admin / manager / employee，可切换）；**仅前端展示，真实权限以后端数据为准**。
+- **中英双语（i18n）**：导航、侧栏、设置页、聊天面板（会话列表 / 输入区 / 欢迎语 / 引用提示）等框架文案已接入 `lib/prefs.tsx` 双语词典（`t(key)` 支持 `{n}` 插值）。内容数据（会话标题、演示问答、品牌字「知」）按设计不翻译。
+- **聊天输入交互**：`Enter` 发送、`Shift+Enter` 换行（与多数 IM 一致）。
+- **AppShell 滚动约束**：根容器 `h-screen overflow-hidden`，聊天区与历史列表各自独立滚动，历史会话很多时新对话面板不再错位、底部项不再被裁切。
+- **大文件上传**：dev 代理请求体上限 10MB → 50MB，修复大 PDF 上传 `server error`。
 
 ## 技术栈
 
@@ -399,7 +411,7 @@ Ollama 取默认 ≈0.8，同一条查询**重复 5 次会出现 1~2 次判定�
 | Embedding | BAAI/bge-m3（1024 维，本地）                  |
 | Rerank    | BAAI/bge-reranker-v2-m3（本地，仅排序不参与拒答判定）   |
 | LLM       | OpenAI 兼容协议（本机/局域网 Ollama、vLLM、DeepSeek 等均可；不可用时自动降级为检索片段回显） |
-| 解析        | pypdf / python-docx / 内置 txt、md         |
+| 解析        | pypdf / python-docx / 内置 txt、md；**无文本层 PDF 自动走 pdftoppm + RapidOCR 扫描件兜底** |
 | 切块        | 条款感知切块（按 条/章/节 切 + 标题回填，可切回通用递归切块）   |
 | 去重        | 入库侧 sha256 精确去重 + 检索侧 3-gram 重叠系数近似去重 |
 | 前端        | Next.js 16 + React 19 + Tailwind 4 + lucide-react |
@@ -425,7 +437,7 @@ cd backend
 ## 已知限制（demo 范围）
 
 - **无鉴权**：角色在服务端写死（admin/manager/employee），demo 未实现登录体系；权限过滤逻辑在检索前 SQL 中生效。文档可见范围可用 `PUT /documents/{id}/permissions` 调整，但**管理端 `/admin/*` 接口无任何保护**，生产环境接入前必须补 SSO。
-- **无 OCR**：扫描件无法提取文本，pipeline 会标记 `failed`（预留 marker 接口）。
+- **扫描件 OCR 兜底**：无文本层 / 纯图片型 PDF 会自动栅格化（pdftoppm，默认 200 DPI）并走 RapidOCR（onnxruntime CPU）提取文字，无需人工介入；受 `OCR_ENABLED`（`true`）/ `OCR_DPI`（`200`）控制。OCR 依赖系统 `poppler-utils` 与 Python 包 `rapidocr-onnxruntime`。
 - **无 SSE 流式**：chat 为同步返回；前端以打字机效果呈现答案，打字为客户端动画而非真流式。
 - **回答依赖外部 LLM**：回答需一个 OpenAI 兼容端点（本机 Ollama、局域网机器、或第三方 API 皆可，配置见「快速开始 §3」）。LLM 不可用时自动降级为检索片段回显（"根据资料：{top chunk 内容前缀}"）保证 demo 不中断，但此时 **Tier3 终审被跳过**，形似干扰项（如「劳动合同法规定的试用期上限是多少」）会带着本公司制度段落被放行。
 - **阈值随语料漂移**：`ANSWER_GATE=0.45` 是按当前 demo 语料标定的。换语料后务必用 `tests/bench/calibrate_noanswer.py` 重新标定 —— 实测语料 15→35 篇时域外最高相似度会从 0.5256 漂到 0.5996。
