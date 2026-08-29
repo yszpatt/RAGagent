@@ -108,10 +108,13 @@ def wait_health(result):
 
 
 def upload_doc(path):
+    # force=true：冒烟测试每次都用固定样例，内容不变；不带 force 会被内容去重
+    # 拦成 409。force 的语义是覆盖重建同一份文档，正好符合这里「每次重跑索引」的意图。
     with open(path, "rb") as f:
         r = requests.post(
             f"{BASE_URL}/api/v1/documents/upload",
             files={"file": (Path(path).name, f)},
+            data={"force": "true"},
             timeout=30,
         )
     r.raise_for_status()
@@ -124,8 +127,8 @@ def wait_doc_completed(doc_id, result):
     last_status = None
     while time.time() < deadline:
         r = requests.get(f"{BASE_URL}/api/v1/documents/{doc_id}", timeout=10)
-        # 上传端点只入队，documents 行由 worker 在 run_ingestion 内落库；
-        # worker 未开工前 GET 会 404，视为"尚未创建"继续轮询即可。
+        # 上传端点已立即落 documents 行（status=pending），正常不应再出现 404。
+        # 保留兜底仅为防止极端时序（如上传与查询之间文档被清理）。
         if r.status_code == 404:
             last_status = "pending"
             time.sleep(POLL_INTERVAL)

@@ -171,3 +171,144 @@ def test_graph_roles_passthrough(monkeypatch):
     graph.invoke({"query": "我的福利", "roles": ["employee"]})
 
     assert captured["roles"] == ["employee"]
+
+
+# ---------------------------------------------------------------------------
+# P0-1 两级 No-Answer 判定（docs/plans/2026-08-29-optimization-plan.md 实验 A）
+#
+# 背景：reranker 绝对分数域内外分布重叠，旧逻辑用 threshold=0.3 做门控，
+# 实测误杀 40% 正确答案（口语化提问重灾区）。现改为：
+#   Tier1 = embedding 余弦门控（宽松）/ Tier2 = reranker 仅排序 / Tier3 = LLM 终审
+# ---------------------------------------------------------------------------
+
+def test_tier1_gate_saves_high_cosine_low_rerank(monkeypatch):
+    """核心回归：余弦相似度高但 reranker 分低时**必须回答**。
+
+    这是本次修复的关键场景 —— 口语化提问（如「签了字能反悔吗」）的特征正是
+    「向量看得懂、reranker 打分低」。旧逻辑用 rerank 0.3 门控会把它误杀。
+    """
+    from app.generation.graphs.query_graph import build_query_graph
+
+    retrieved = [{
+        "id": "chunk-1", "content": "违约金为人民币壹拾万元整。", "page_number": 8,
+        "section_title": "违约责任", "distance": 0.3,   # → 余弦相似度 0.7，高于门控 0.55
+    }]
+    llm = FakeLLM(answer="违约金为壹拾万元整[1]。")
+    # reranker 只给 0.05 分（远低于旧阈值 0.3），但它仍把该块排在第一位
+    _patch_providers(monkeypatch, rerank_result=[(0, 0.05)], llm=llm)
+    _patch_search(monkeypatch, retrieved)
+
+    graph = build_query_graph()
+    result = graph.invoke({"query": "签了字能反悔吗，要付什么代价", "roles": ["employee"]})
+
+    assert result["no_answer"] is False, "高余弦命中被误杀 —— P0-1 回归"
+    assert result["answer"] == "违约金为壹拾万元整[1]。"
+    assert llm.context is not None, "Tier1 通过后必须真正调用 LLM"
+    assert result["citations"] == [{"chunk_id": "chunk-1", "page": 8}]
+
+
+def test_tier1_gate_rejects_low_cosine(monkeypatch):
+    """Tier1：余弦相似度低于门控 → 直接拒答，且不消耗 LLM 调用。"""
+    from app.generation.graphs.query_graph import build_query_graph
+
+    retrieved = [{
+        "id": "chunk-1", "content": "完全无关的文档内容。", "page_number": 1,
+        "section_title": "其他", "distance": 0.8,   # → 余弦 0.2，低于门控 0.55
+    }]
+    llm = FakeLLM(answer="这段回答本不该出现。")
+    # 即便 reranker 给高分，Tier1 也应先拦下
+    _patch_providers(monkeypatch, rerank_result=[(0, 0.95)], llm=llm)
+    _patch_search(monkeypatch, retrieved)
+
+    graph = build_query_graph()
+    result = graph.invoke({"query": "今天天气怎么样", "roles": ["employee"]})
+
+    assert result["no_answer"] is True
+    assert result["answer"] == settings.no_answer_message
+    assert llm.context is None, "Tier1 拒答时不应浪费 LLM 调用"
+    assert result["citations"] == []
+
+
+def test_tier3_llm_final_check_no_answer(monkeypatch):
+    """Tier3：余弦过关但 LLM 判定上下文中无答案 → 拒答。"""
+    from app.generation.graphs.query_graph import build_query_graph
+    from app.generation.providers.llm import NO_ANSWER_MARKER
+
+    retrieved = [{
+        "id": "chunk-1", "content": "差旅费报销标准说明。", "page_number": 5,
+        "section_title": "财务", "distance": 0.2,   # → 余弦 0.8，通过门控
+    }]
+    llm = FakeLLM(answer=NO_ANSWER_MARKER)
+    _patch_providers(monkeypatch, rerank_result=[(0, 0.9)], llm=llm)
+    _patch_search(monkeypatch, retrieved)
+
+    graph = build_query_graph()
+    result = graph.invoke({"query": "公司年会什么时候办", "roles": ["employee"]})
+
+    assert result["no_answer"] is True, "LLM 终审判无答案时应拒答"
+    assert result["answer"] == settings.no_answer_message
+    assert result["citations"] == []
+
+
+def test_llm_final_check_can_be_disabled(monkeypatch):
+    """Tier3 可关闭：关闭后即便 LLM 输出拒答标记也照常返回原文。"""
+    from app.generation.graphs.query_graph import build_query_graph
+    from app.generation.providers.llm import NO_ANSWER_MARKER
+
+    monkeypatch.setattr(settings, "llm_final_check", False)
+    retrieved = [{
+        "id": "chunk-1", "content": "差旅费报销标准说明。", "page_number": 5,
+        "section_title": "财务", "distance": 0.2,
+    }]
+    llm = FakeLLM(answer=NO_ANSWER_MARKER)
+    _patch_providers(monkeypatch, rerank_result=[(0, 0.9)], llm=llm)
+    _patch_search(monkeypatch, retrieved)
+
+    graph = build_query_graph()
+    result = graph.invoke({"query": "公司年会什么时候办", "roles": ["employee"]})
+
+    assert result["no_answer"] is False
+    assert result["answer"] == NO_ANSWER_MARKER
+
+
+def test_backward_compat_rerank_threshold(monkeypatch):
+    """向后兼容：answer_gate_enabled=False 时退回旧的 rerank 单阈值行为。"""
+    from app.generation.graphs.query_graph import build_query_graph
+
+    monkeypatch.setattr(settings, "answer_gate_enabled", False)
+    retrieved = [{
+        "id": "chunk-1", "content": "某段内容。", "page_number": 1,
+        "section_title": "其他", "distance": 0.1,   # 余弦 0.9，新门控本应放行
+    }]
+    llm = FakeLLM(answer="正式回答。")
+    # rerank 0.1 < 旧阈值 0.3 → 旧逻辑应拒答
+    _patch_providers(monkeypatch, rerank_result=[(0, 0.1)], llm=llm)
+    _patch_search(monkeypatch, retrieved)
+
+    graph = build_query_graph()
+    result = graph.invoke({"query": "问题", "roles": ["employee"]})
+
+    assert result["no_answer"] is True, "兼容模式下应沿用 rerank_threshold 判定"
+    assert llm.context is None
+
+
+def test_similarity_derived_from_distance(monkeypatch):
+    """retrieve 节点应把 pgvector 余弦距离换算成相似度（1 - distance）。"""
+    from app.generation.graphs.query_graph import build_query_graph
+
+    captured = {}
+
+    def fake_search(self, query_vec, top_k=5, roles=None, workspace_id=None):
+        captured["raw"] = [{
+            "id": "c1", "content": "内容", "page_number": 1,
+            "section_title": "节", "distance": 0.25,
+        }]
+        return captured["raw"]
+
+    _patch_providers(monkeypatch, rerank_result=[(0, 0.9)])
+    monkeypatch.setattr("app.retrieval.vector_store.VectorStore.search", fake_search)
+
+    graph = build_query_graph()
+    graph.invoke({"query": "问题", "roles": ["employee"]})
+
+    assert abs(captured["raw"][0]["similarity"] - 0.75) < 1e-6

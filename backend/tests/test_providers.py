@@ -15,7 +15,9 @@ class FakeEmbeddingModel:
     def get_sentence_embedding_dimension(self) -> int:
         return 1024
 
-    def encode(self, texts, normalize_embeddings=False):
+    # 接收 **kwargs：真实 SentenceTransformer.encode 支持 batch_size /
+    # show_progress_bar 等参数，桩需容忍这些调用，否则会掩盖真实接口契约。
+    def encode(self, texts, normalize_embeddings=False, **kwargs):
         return np.zeros((len(texts), 1024))
 
 

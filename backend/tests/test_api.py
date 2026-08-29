@@ -22,7 +22,7 @@ def test_upload_requires_file():
     assert r.status_code == 422
 
 
-def test_upload_success(monkeypatch, tmp_path):
+def test_upload_success(monkeypatch, engine):
     # stub enqueue_ingestion：避免测试依赖 redis 服务
     def fake_enqueue(path, document_id, workspace_id=None, roles=None):
         assert path.startswith("/tmp/kp_uploads/")
@@ -39,6 +39,11 @@ def test_upload_success(monkeypatch, tmp_path):
     assert data["document_id"]
     assert data["job_id"] == "job-123"
     assert data["status"] == "pending"
+    # 上传会立即落 documents 行，测试结束后必须清理：
+    # 内容去重按 (workspace_id, content_hash) 唯一，残留会让下次运行拿到 409。
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM documents WHERE id = :id"),
+                     {"id": data["document_id"]})
 
 
 def test_chat_endpoint(monkeypatch):
@@ -148,7 +153,7 @@ def test_chat_empty_query_returns_422():
     assert r.status_code == 422
 
 
-def test_upload_blocks_path_traversal(monkeypatch, tmp_path):
+def test_upload_blocks_path_traversal(monkeypatch, engine):
     # stub enqueue_ingestion：捕获实际写入路径，验证未被穿越到 UPLOAD_DIR 之外
     captured = {}
 
@@ -167,6 +172,9 @@ def test_upload_blocks_path_traversal(monkeypatch, tmp_path):
     # 清理后的文件名只保留 basename，且不含 ".."
     assert ".." not in captured["path"]
     assert captured["path"].endswith("_escape.txt")
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM documents WHERE id = :id"),
+                     {"id": r.json()["document_id"]})
 
 
 def test_get_document_not_found():
@@ -351,3 +359,134 @@ def test_metrics_endpoint(engine):
     assert isinstance(data["weekly_queries"], list)
     assert "no_answer_rate" in data and "citation_rate" in data
     assert data["acceptance_rate"] is None  # 待埋点
+
+
+# --------------------------------------------------------------------------
+# 上传：去重与 404 竞态
+# --------------------------------------------------------------------------
+
+def _fake_enqueue():
+    """返回 (stub函数, 记录列表)，避免测试依赖 redis。"""
+    calls: list[dict] = []
+
+    def fake(path, document_id, workspace_id=None, roles=None):
+        calls.append({"path": path, "document_id": str(document_id)})
+        from types import SimpleNamespace
+        return SimpleNamespace(id="job-stub")
+
+    return fake, calls
+
+
+def test_upload_creates_row_immediately_no_404_race(monkeypatch, engine):
+    """上传返回 document_id 后立刻查询不得 404。
+
+    旧实现只在 worker 的 run_ingestion 里才 INSERT documents 行，上传与建行之间
+    存在竞态窗口：前端拿到 id 立即轮询 GET /documents/{id} 会拿到 404。
+    """
+    fake, calls = _fake_enqueue()
+    monkeypatch.setattr("app.api.v1.documents.enqueue_ingestion", fake)
+
+    r = client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("race.txt", b"race condition probe", "text/plain")},
+    )
+    assert r.status_code == 200
+    doc_id = r.json()["document_id"]
+
+    try:
+        # 入队被 stub，worker 根本没跑过 —— 旧实现在此必然 404
+        assert len(calls) == 1
+        r2 = client.get(f"/api/v1/documents/{doc_id}")
+        assert r2.status_code == 200, "上传后立即可查，不应 404"
+        assert r2.json()["data"]["status"] == "pending"
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM documents WHERE id = :id"), {"id": doc_id})
+
+
+def test_upload_duplicate_content_returns_409(monkeypatch, engine):
+    """相同内容重复上传应被拦截，且不重复入队。
+
+    实测无此约束时同一份合同被上传 3 次，9 个 chunk 里 4 个冗余，
+    重复块挤占 top-k 名额直接压低检索准确度。
+    """
+    fake, calls = _fake_enqueue()
+    monkeypatch.setattr("app.api.v1.documents.enqueue_ingestion", fake)
+    payload = b"duplicate detection payload " * 4
+
+    r1 = client.post("/api/v1/documents/upload",
+                     files={"file": ("dup.txt", payload, "text/plain")})
+    assert r1.status_code == 200
+    doc_id = r1.json()["document_id"]
+
+    try:
+        assert len(calls) == 1
+        r2 = client.post("/api/v1/documents/upload",
+                         files={"file": ("dup_copy.txt", payload, "text/plain")})
+        assert r2.status_code == 409
+        detail = r2.json()["detail"]
+        assert detail["document_id"] == doc_id
+        assert "force" in detail["hint"]
+        # 重复上传不得再入队，也不得新建文档行
+        assert len(calls) == 1
+        with engine.begin() as conn:
+            n = conn.execute(text(
+                "SELECT count(*) FROM documents WHERE content_hash = :h"
+            ), {"h": r1.json()["content_hash"]}).scalar()
+        assert n == 1
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM documents WHERE id = :id"), {"id": doc_id})
+
+
+def test_upload_force_replaces_instead_of_duplicating(monkeypatch, engine):
+    """force=true 覆盖重建同一份文档，而不是新增副本。
+
+    新增副本会把刚修好的「重复块挤占 top-k」问题又造回来，因此 DB 层
+    (workspace_id, content_hash) 唯一索引始终成立，force 走的是更新而非插入。
+    """
+    fake, calls = _fake_enqueue()
+    monkeypatch.setattr("app.api.v1.documents.enqueue_ingestion", fake)
+    payload = b"force upload payload " * 3
+
+    r1 = client.post("/api/v1/documents/upload",
+                     files={"file": ("f.txt", payload, "text/plain")})
+    doc_a = r1.json()["document_id"]
+    r2 = client.post("/api/v1/documents/upload",
+                     files={"file": ("f.txt", payload, "text/plain")},
+                     data={"force": "true"})
+
+    try:
+        assert r2.status_code == 200
+        assert r2.json()["document_id"] == doc_a, "force 应复用原文档行"
+        assert r2.json()["replaced"] is True
+        assert len(calls) == 2, "覆盖重建需要重新入队"
+        # 全库仍只有一行该内容
+        with engine.begin() as conn:
+            n = conn.execute(text(
+                "SELECT count(*) FROM documents WHERE content_hash = :h"
+            ), {"h": r1.json()["content_hash"]}).scalar()
+        assert n == 1
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM documents WHERE id = :id"), {"id": doc_a})
+
+
+def test_upload_different_content_not_deduped(monkeypatch, engine):
+    """内容不同则正常入库，去重不得误伤。"""
+    fake, calls = _fake_enqueue()
+    monkeypatch.setattr("app.api.v1.documents.enqueue_ingestion", fake)
+
+    r1 = client.post("/api/v1/documents/upload",
+                     files={"file": ("a.txt", b"content A " * 5, "text/plain")})
+    r2 = client.post("/api/v1/documents/upload",
+                     files={"file": ("b.txt", b"content B " * 5, "text/plain")})
+    ids = (r1.json()["document_id"], r2.json()["document_id"])
+
+    try:
+        assert r1.status_code == 200 and r2.status_code == 200
+        assert len(calls) == 2
+        assert r1.json()["content_hash"] != r2.json()["content_hash"]
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM documents WHERE id IN :ids"), {"ids": ids})

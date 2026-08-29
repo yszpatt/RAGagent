@@ -32,8 +32,16 @@ CREATE TABLE IF NOT EXISTS documents (
     error_message TEXT,
     created_by    UUID REFERENCES users(id),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- 原始文件字节的 sha256，用于重复上传拦截。
+    -- 实测：无此约束时同一份合同可被上传 3 次，9 个 chunk 里 4 个冗余，
+    -- 重复块挤占 top-k 名额，直接压低检索准确度。
+    content_hash  VARCHAR(64)
 );
+-- 同工作区内内容相同的文件只允许存在一份（部分索引，历史空值不受约束）。
+CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_ws_content_hash
+    ON documents (workspace_id, content_hash)
+    WHERE content_hash IS NOT NULL;
 
 -- 权限（文档级 ACL，检索前过滤）
 CREATE TABLE IF NOT EXISTS document_permissions (
@@ -105,3 +113,12 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_time ON audit_logs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_ws_time ON audit_logs(workspace_id, created_at DESC);
+
+-- ============================================================================
+-- 增量迁移（幂等，可随 schema.sql 重复执行）
+-- 说明：CREATE TABLE IF NOT EXISTS 不会给已存在的表补列，故新增列需在此显式 ALTER。
+-- ============================================================================
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_hash VARCHAR(64);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_ws_content_hash
+    ON documents (workspace_id, content_hash)
+    WHERE content_hash IS NOT NULL;
