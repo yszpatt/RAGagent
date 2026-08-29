@@ -269,9 +269,9 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-6xl gap-6">
-      {/* 会话列表（桌面端） */}
-      <aside className="hidden w-56 shrink-0 flex-col md:flex">
+    <div className="mx-auto flex h-screen w-full max-w-6xl gap-6">
+      {/* 会话列表（桌面端）：独立滚动，不挤占问答列 */}
+      <aside className="hidden w-56 shrink-0 flex-col overflow-y-auto md:flex">
         <div className="mb-3 flex items-center justify-between px-1">
           <h2 className="text-xs font-medium tracking-widest text-ink-faint">
             会话
@@ -322,8 +322,8 @@ export default function ChatPage() {
         </div>
       </aside>
 
-      {/* 问答主列 */}
-      <section className="flex min-h-[calc(100vh-7rem)] min-w-0 flex-1 flex-col">
+      {/* 问答主列：占满整屏、自身成列，中间问答区滚动，输入区固定在底部 */}
+      <section className="flex min-h-0 w-full flex-1 flex-col">
         <header className="mb-4 flex flex-wrap items-center gap-2">
           <h1 className="min-w-0 font-display text-lg font-bold tracking-wide text-ink break-words">
             {activeConv ? activeConv.title : "新会话"}
@@ -346,9 +346,9 @@ export default function ChatPage() {
           </button>
         </header>
 
-        {/* 移动端会话切换 */}
+        {/* 移动端会话切换：横向滚动，独立成条，不挤占问答区 */}
         {convs.length > 0 && (
-          <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 md:hidden">
+          <div className="mb-3 flex max-h-12 shrink-0 gap-1.5 overflow-x-auto pb-1 md:hidden">
             <button
               onClick={() => {
                 setActiveId(null);
