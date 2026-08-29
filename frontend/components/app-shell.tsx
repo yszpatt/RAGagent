@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDemoMode } from "@/lib/demo-context";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV_MAIN = [
   { href: "/", label: "问答", icon: MessageSquareText },
@@ -172,7 +173,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        <div className="mt-auto pt-4">
+        <div className="mt-auto space-y-2 pt-4">
+          <ThemeToggle />
           <DemoSwitch />
         </div>
       </aside>
@@ -191,6 +193,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             aria-hidden="true"
             className={cn("ml-auto size-2 rounded-full", backendDot(backend))}
           />
+          <ThemeToggle iconOnly />
         </div>
         <nav
           aria-label="移动端导航"

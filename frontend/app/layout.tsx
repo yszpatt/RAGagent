@@ -10,14 +10,24 @@ export const metadata: Metadata = {
 };
 
 export const viewport = {
-  themeColor: "#f2f4f6",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f2f4f6" },
+    { media: "(prefers-color-scheme: dark)", color: "#141920" },
+  ],
 };
+
+// 首帧防白闪：渲染前读 localStorage(kp.theme.v1) 把 .dark 挂到 <html>。
+// 逻辑与 components/theme-toggle.tsx 的 applyTheme 保持一致。
+const themeInitScript = `(function(){try{var t=localStorage.getItem("kp.theme.v1");function add(){document.documentElement.classList.add("dark");}if(t==="dark"){add();return;}if(t==="light"){return;}if(window.matchMedia("(prefers-color-scheme: dark)").matches){add();}}catch(e){}})();`;
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="zh-CN" className="h-full antialiased">
+    <html lang="zh-CN" className="h-full antialiased" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="min-h-full">
         <DemoProvider>
           <AppShell>{children}</AppShell>

@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* 类切换式暗黑变体：<html class="dark"> 生效（见 theme-toggle.tsx） */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /*
  * KnowledgePilot 设计 token ——「档案室」体系
  * 瓷灰底 + 蓝黑墨 + 靛蓝交互；朱砂（seal）只用于「需核验的标注」：
@@ -30,6 +33,32 @@
     "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
     "Courier New", monospace;
+}
+
+/*
+ * 暗黑模式：「深夜书房」映射。所有工具类编译后引用 --color-* 变量，
+ * 故只在 .dark 下覆盖变量即可全站换肤，组件零改动。
+ * 语义对应：底色更深一档、文字反转提亮、交互色整体加亮保对比度。
+ */
+.dark {
+  color-scheme: dark;
+  --color-porcelain: #141920;
+  --color-paper: #1c222b;
+  --color-ink: #e4e9f1;
+  --color-ink-soft: #a2acbb;
+  --color-ink-faint: #6d7889;
+  --color-line: #2a323d;
+  --color-line-strong: #3f4a59;
+  --color-indigo: #8497e8;
+  --color-indigo-deep: #a5b5f4;
+  --color-indigo-wash: #252f4a;
+  --color-seal: #e0654f;
+  --color-seal-deep: #ef8a74;
+  --color-seal-wash: #37221e;
+  --color-jade: #52c79c;
+  --color-jade-wash: #1c2e28;
+  --color-amber: #d9a544;
+  --color-amber-wash: #302818;
 }
 
 body {
