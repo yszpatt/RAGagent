@@ -200,7 +200,7 @@ function DemoOverview() {
   const m = demoMetrics;
   const maxQueries = Math.max(...m.weekly.map((w) => w.queries));
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="mx-auto h-full w-full max-w-5xl overflow-y-auto">
       <PageHeader
         title="使用看板"
         description="知识库的使用与健康度总览。北极星指标是「答案采纳率」——用户点开引用、追问或点赞的比例。"

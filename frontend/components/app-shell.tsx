@@ -126,7 +126,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { backend } = useDemoMode();
 
   return (
-    <div className="flex min-h-screen">
+    // 强制占满一屏、禁止外层滚动；各页面自行决定内部是否滚动。
+    <div className="flex h-screen overflow-hidden">
       {/* 跳转到主内容（键盘用户） */}
       <a
         href="#main"
@@ -216,7 +217,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <main
         id="main"
-        className="min-w-0 flex-1 px-4 pb-16 pt-20 sm:px-6 lg:px-10 lg:pt-8"
+        className="min-w-0 flex-1 overflow-hidden px-4 pb-16 pt-20 sm:px-6 lg:px-10 lg:pt-8"
       >
         {children}
       </main>

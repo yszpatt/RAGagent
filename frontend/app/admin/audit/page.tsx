@@ -111,7 +111,7 @@ export default function AuditPage() {
   }, [rows, keyword, filter]);
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="mx-auto h-full w-full max-w-5xl overflow-y-auto">
       <PageHeader
         title="审计日志"
         description="query / upload / permission_change / delete 关键动作全量留痕，满足合规追溯要求。"

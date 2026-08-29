@@ -269,9 +269,9 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="mx-auto flex h-screen w-full max-w-6xl gap-6">
+    <div className="mx-auto flex h-full w-full max-w-6xl gap-6 overflow-hidden">
       {/* 会话列表（桌面端）：独立滚动，不挤占问答列 */}
-      <aside className="hidden w-56 shrink-0 flex-col overflow-y-auto md:flex">
+      <aside className="hidden h-full w-56 shrink-0 flex-col overflow-y-auto md:flex">
         <div className="mb-3 flex items-center justify-between px-1">
           <h2 className="text-xs font-medium tracking-widest text-ink-faint">
             会话
@@ -322,8 +322,8 @@ export default function ChatPage() {
         </div>
       </aside>
 
-      {/* 问答主列：占满整屏、自身成列，中间问答区滚动，输入区固定在底部 */}
-      <section className="flex min-h-0 w-full flex-1 flex-col">
+      {/* 问答主列：自身成列，中间问答区滚动，输入区固定在底部 */}
+      <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         <header className="mb-4 flex flex-wrap items-center gap-2">
           <h1 className="min-w-0 font-display text-lg font-bold tracking-wide text-ink break-words">
             {activeConv ? activeConv.title : "新会话"}

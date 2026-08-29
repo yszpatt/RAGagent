@@ -193,7 +193,7 @@ export default function DocumentsPage() {
   });
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="mx-auto h-full w-full max-w-5xl overflow-y-auto">
       <PageHeader
         title="知识库"
         description={

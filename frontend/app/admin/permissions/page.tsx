@@ -114,7 +114,7 @@ export default function PermissionsPage() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="mx-auto h-full w-full max-w-5xl overflow-y-auto">
       <PageHeader
         title="权限管理"
         description="按文档设置角色可见范围。权限过滤发生在检索之前（SQL WHERE），未授权文档不参与召回，从根上杜绝越权泄漏。"
