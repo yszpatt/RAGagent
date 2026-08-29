@@ -473,7 +473,9 @@ export default function ChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              // Enter 发送；Shift+Enter 换行；isComposing 守卫中文输入法
+              // 选词回车（fcitx5 确认候选词也触发 Enter），避免误发送
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 void handleAsk();
               }
@@ -484,7 +486,7 @@ export default function ChatPage() {
           />
           <div className="mt-2 flex items-center justify-between gap-2">
             <span className="hidden text-[11px] text-ink-faint sm:inline">
-              Ctrl/⌘ + Enter 发送 · 答案均标注来源页码
+              Enter 发送 · Shift+Enter 换行 · 答案均标注来源页码
             </span>
             <div className="flex shrink-0 items-center gap-2">
               <Link
