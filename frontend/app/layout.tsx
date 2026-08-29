@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/app-shell";
 import { DemoProvider } from "@/lib/demo-context";
+import { PreferencesProvider } from "@/lib/prefs";
 
 export const metadata: Metadata = {
   title: "KnowledgePilot · 企业知识库问答",
@@ -30,7 +31,9 @@ export default function RootLayout({
       </head>
       <body className="min-h-full">
         <DemoProvider>
-          <AppShell>{children}</AppShell>
+          <PreferencesProvider>
+            <AppShell>{children}</AppShell>
+          </PreferencesProvider>
         </DemoProvider>
       </body>
     </html>

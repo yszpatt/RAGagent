@@ -112,6 +112,12 @@ a,
   animation: slide-in 0.22s ease-out both;
 }
 
+/* 动效开关（设置页）：关闭后取消条目浮现与抽屉滑入 */
+.motion-off .rise,
+.motion-off .slide-in {
+  animation: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .rise,
   .slide-in {

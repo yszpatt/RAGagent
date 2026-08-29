@@ -9,22 +9,26 @@ import {
   LibraryBig,
   MessageSquareText,
   ScrollText,
+  Settings,
   ShieldCheck,
   Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDemoMode } from "@/lib/demo-context";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ROLE_BADGE, usePrefs, type DictKey } from "@/lib/prefs";
 
+// label 为 prefs 词典 key，渲染时经 t() 解析（语言可切换）
 const NAV_MAIN = [
-  { href: "/", label: "问答", icon: MessageSquareText },
-  { href: "/documents", label: "知识库", icon: LibraryBig },
+  { href: "/", label: "nav.chat", icon: MessageSquareText },
+  { href: "/documents", label: "nav.docs", icon: LibraryBig },
 ];
 
 const NAV_ADMIN = [
-  { href: "/admin/overview", label: "看板", icon: Gauge },
-  { href: "/admin/permissions", label: "权限", icon: ShieldCheck },
-  { href: "/admin/audit", label: "审计", icon: ScrollText },
+  { href: "/admin/overview", label: "nav.overview", icon: Gauge },
+  { href: "/admin/permissions", label: "nav.permissions", icon: ShieldCheck },
+  { href: "/admin/audit", label: "nav.audit", icon: ScrollText },
+  { href: "/admin/settings", label: "nav.settings", icon: Settings },
 ];
 
 function BrandMark({ size = "size-8" }: { size?: string }) {
@@ -125,6 +129,7 @@ function DemoSwitch() {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { backend } = useDemoMode();
+  const { t, user } = usePrefs();
 
   return (
     // 强制占满一屏、禁止外层滚动；各页面自行决定内部是否滚动。
@@ -134,7 +139,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:border focus:border-line focus:bg-paper focus:px-3 focus:py-2 focus:text-sm focus:text-ink"
       >
-        跳到主内容
+        {t("skip")}
       </a>
       {/* 桌面侧栏 */}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-line bg-paper px-3 py-4 lg:flex">
@@ -145,11 +150,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </span>
         </Link>
 
-        <nav aria-label="主导航" className="flex flex-col gap-0.5">
+        <nav aria-label={t("nav.main")} className="flex flex-col gap-0.5">
           {NAV_MAIN.map((item) => (
             <NavLink
               key={item.href}
               {...item}
+              label={t(item.label as DictKey)}
               active={pathname === item.href}
             />
           ))}
@@ -157,23 +163,50 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="mt-6 mb-1 flex items-center gap-2 px-3">
           <span className="text-[11px] font-medium tracking-widest text-ink-faint">
-            管理
+            {t("nav.admin")}
           </span>
           <span className="rounded-sm border border-seal/40 px-1 font-mono text-[10px] leading-4 text-seal">
             预览
           </span>
         </div>
-        <nav aria-label="管理导航" className="flex flex-col gap-0.5">
+        <nav aria-label={t("nav.admin")} className="flex flex-col gap-0.5">
           {NAV_ADMIN.map((item) => (
             <NavLink
               key={item.href}
               {...item}
+              label={t(item.label as DictKey)}
               active={pathname === item.href}
             />
           ))}
         </nav>
 
         <div className="mt-auto space-y-2 pt-4">
+          {/* 当前用户（演示身份）：点击进入设置页 */}
+          <Link
+            href="/admin/settings"
+            aria-label={user.name}
+            className="flex items-center gap-2.5 rounded-lg border border-line bg-porcelain px-3 py-2.5 transition-colors hover:border-line-strong"
+          >
+            <span
+              aria-hidden="true"
+              className="flex size-8 shrink-0 select-none items-center justify-center rounded-full bg-indigo-wash font-display text-xs font-bold text-indigo-deep"
+            >
+              {user.name.slice(0, 1)}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs font-medium text-ink">
+                {user.name}
+              </span>
+              <span
+                className={cn(
+                  "mt-0.5 inline-block rounded-sm border px-1 font-mono text-[10px] leading-4",
+                  ROLE_BADGE[user.role],
+                )}
+              >
+                {t(`role.${user.role}` as DictKey)}
+              </span>
+            </span>
+          </Link>
           <ThemeToggle />
           <DemoSwitch />
         </div>
@@ -194,9 +227,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className={cn("ml-auto size-2 rounded-full", backendDot(backend))}
           />
           <ThemeToggle iconOnly />
+          <Link
+            href="/admin/settings"
+            aria-label={user.name}
+            title={user.name}
+            className="flex size-7 shrink-0 select-none items-center justify-center rounded-full bg-indigo-wash font-display text-[11px] font-bold text-indigo-deep"
+          >
+            {user.name.slice(0, 1)}
+          </Link>
         </div>
         <nav
-          aria-label="移动端导航"
+          aria-label={t("nav.main")}
           className="flex gap-1 overflow-x-auto px-3 pb-2"
         >
           {[...NAV_MAIN, ...NAV_ADMIN].map((item) => (
@@ -212,7 +253,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )}
             >
               <item.icon size={14} />
-              {item.label}
+              {t(item.label as DictKey)}
             </Link>
           ))}
         </nav>
