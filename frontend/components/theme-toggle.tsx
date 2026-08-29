@@ -83,12 +83,13 @@ export function ThemeToggle({ iconOnly = false }: { iconOnly?: boolean }) {
       : mode === "dark"
         ? t("theme.dark")
         : t("theme.system");
+  const aria = t("theme.aria", { label });
 
   return (
     <button
       onClick={cycle}
-      aria-label={t("theme.aria").replace("{label}", label)}
-      title={`${t("theme.aria").replace("{label}", label)}`}
+      aria-label={aria}
+      title={aria}
       className={
         iconOnly
           ? "rounded-md p-1.5 text-ink-soft transition-colors hover:bg-porcelain hover:text-ink"

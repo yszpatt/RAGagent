@@ -5,6 +5,7 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { usePrefs } from "@/lib/prefs";
 import { cn, refLabel } from "@/lib/utils";
 
 export function prepareAnswer(md: string): string {
@@ -18,6 +19,7 @@ function CitationMark({
   n: number;
   onCitation?: (n: number) => void;
 }) {
+  const { t } = usePrefs();
   return (
     <button
       type="button"
@@ -26,7 +28,7 @@ function CitationMark({
         e.stopPropagation();
         onCitation?.(n);
       }}
-      title={`查看来源 ${refLabel(n - 1)}`}
+      title={t("chat.viewSourceRef", { n: refLabel(n - 1) })}
       className="mx-0.5 inline-flex h-4 min-w-4 translate-y-[-2px] cursor-pointer items-center justify-center rounded-[3px] border border-seal/50 bg-seal-wash px-0.5 align-middle font-mono text-[10px] leading-3 text-seal transition-colors hover:bg-seal hover:text-paper"
     >
       {n}

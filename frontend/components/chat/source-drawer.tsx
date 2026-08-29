@@ -5,6 +5,7 @@
 import { FileText } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
 import { Badge } from "@/components/ui/badge";
+import { usePrefs } from "@/lib/prefs";
 import type { SourceRef } from "@/lib/types";
 
 export function SourceDrawer({
@@ -16,6 +17,7 @@ export function SourceDrawer({
   onClose: () => void;
   demo: boolean;
 }) {
+  const { t } = usePrefs();
   return (
     <Drawer
       open={source !== null}
@@ -25,8 +27,8 @@ export function SourceDrawer({
           <span className="rounded-[3px] border border-seal/50 bg-seal-wash px-1.5 py-0.5 font-mono text-xs text-seal">
             {source?.ref ?? ""}
           </span>
-          来源案卷
-          {demo && <Badge tone="seal">演示</Badge>}
+          {t("chat.sourceDock")}
+          {demo && <Badge tone="seal">{t("chat.demoBadge")}</Badge>}
         </span>
       }
       subtitle={source?.title}
@@ -34,18 +36,18 @@ export function SourceDrawer({
       {source && (
         <div className="flex flex-col gap-4">
           <dl className="grid grid-cols-[64px_1fr] gap-x-3 gap-y-2 text-xs">
-            <dt className="text-ink-faint">文档</dt>
+            <dt className="text-ink-faint">{t("chat.fieldDoc")}</dt>
             <dd className="flex items-center gap-1.5 text-ink">
               <FileText size={13} className="text-ink-faint" />
               {source.title}
             </dd>
-            <dt className="text-ink-faint">页码</dt>
+            <dt className="text-ink-faint">{t("chat.fieldPage")}</dt>
             <dd className="font-mono text-ink">
-              {source.page != null ? `第 ${source.page} 页` : "—"}
+              {source.page != null ? t("chat.pageNum", { n: source.page }) : "—"}
             </dd>
             {source.section && (
               <>
-                <dt className="text-ink-faint">章节</dt>
+                <dt className="text-ink-faint">{t("chat.fieldSection")}</dt>
                 <dd className="text-ink">{source.section}</dd>
               </>
             )}
@@ -60,14 +62,16 @@ export function SourceDrawer({
                 aria-hidden="true"
                 className="pointer-events-none absolute -top-2.5 right-4 -rotate-6 rounded-[3px] border-2 border-seal/60 bg-paper px-1.5 py-0.5 font-display text-xs font-bold tracking-widest text-seal/80"
               >
-                已核实
+                {t("chat.verified")}
               </span>
             </figure>
           ) : (
             <div className="rounded-lg border border-dashed border-line-strong bg-porcelain p-4 text-xs leading-5 text-ink-soft">
-              原文摘录暂不可展示：后端尚未提供引用内容查询接口
-              （规划中 <code className="font-mono">GET /chat/&#123;id&#125;/citations</code>）。
-              当前可核对的信息：文档名与页码。
+              {t("chat.excerptUnavailable")}
+              {" "}
+              {t("chat.excerptPlan", {
+                api: "GET /chat/{id}/citations",
+              })}
             </div>
           )}
 

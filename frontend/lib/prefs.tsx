@@ -46,6 +46,50 @@ const dict = {
     "role.admin": "管理员",
     "role.manager": "经理",
     "role.employee": "员工",
+    /* 聊天页 / 会话面板 */
+    "chat.newConv": "新会话",
+    "chat.sessions": "会话",
+    "chat.previewTag": "演示模式",
+    "chat.localNote": "提问后会自动保存在本机，此列表不会上传。",
+    "chat.turnsSuffix": "{n}轮",
+    "chat.demoNote": "演示会话不占用本机存储。",
+    "chat.rounds": "{n} 轮问答",
+    "chat.noTitle": "（无标题会话）",
+    "chat.loadFailed": "加载会话失败",
+    "chat.askError": "请求出错",
+    "chat.askErrorHint":
+      "。请确认后端已启动（uvicorn app.main:app），或在左下角开启演示模式。",
+    "chat.welcomeTitle": "问一个业务问题，答案必带出处",
+    "chat.welcomeDesc":
+      "系统在已上传的知识库中检索并生成答案，每条结论都标注来源页码；检索不到的内容会明确告知，不编造。",
+    "chat.demoBanner": "后端未连接，当前为演示数据。去",
+    "chat.uploadFirst": "上传文档后即可真实问答。",
+    "chat.generating": "检索知识库并生成答案…",
+    "chat.inputLabel": "输入问题",
+    "chat.placeholder": "例如：供应商合同里违约金是怎么约定的？",
+    "chat.inputHint": "Enter 发送 · Shift+Enter 换行 · 答案均标注来源页码",
+    "chat.send": "提问",
+    "chat.viewSources": "查看来源案卷",
+    "chat.pageNum": "第 {n} 页",
+    "chat.pageUnknown": "页码未知",
+    "chat.roundAria": "第 {n} 轮问答",
+    "chat.q": "问",
+    "chat.a": "答",
+    "chat.demoBadge": "演示",
+    "chat.noAnswer": "可换个问法，或先到「知识库」上传相关文档。",
+    "chat.sources": "来源",
+    "chat.refPrefix": "引-",
+    "chat.demoDoc": "演示文档.pdf",
+    "chat.demoExcerpt": "（演示数据未收录该片段原文）",
+    "chat.kbRef": "知识库引用",
+    "chat.sourceDock": "来源案卷",
+    "chat.fieldDoc": "文档",
+    "chat.fieldPage": "页码",
+    "chat.fieldSection": "章节",
+    "chat.verified": "已核实",
+    "chat.excerptUnavailable": "原文摘录暂不可展示：后端尚未提供引用内容查询接口",
+    "chat.excerptPlan": "（规划中 {api}）。当前可核对的信息：文档名与页码。",
+    "chat.viewSourceRef": "查看来源 {n}",
   },
   en: {
     "nav.chat": "Chat",
@@ -64,6 +108,52 @@ const dict = {
     "role.admin": "Admin",
     "role.manager": "Manager",
     "role.employee": "Employee",
+    /* Chat page / conversation panel */
+    "chat.newConv": "New chat",
+    "chat.sessions": "Conversations",
+    "chat.previewTag": "Demo mode",
+    "chat.localNote": "Questions are saved locally; this list never leaves your device.",
+    "chat.turnsSuffix": "{n} turns",
+    "chat.demoNote": "Demo conversations are not stored.",
+    "chat.rounds": "{n} rounds",
+    "chat.noTitle": "(Untitled conversation)",
+    "chat.loadFailed": "Failed to load conversation",
+    "chat.askError": "Request failed",
+    "chat.askErrorHint":
+      ". Make sure the backend is running (uvicorn app.main:app), or enable demo mode at the bottom-left.",
+    "chat.welcomeTitle": "Ask a business question — answers come with sources",
+    "chat.welcomeDesc":
+      "Answers are generated from your uploaded library; every claim cites a page number. Missing content is stated explicitly, never fabricated.",
+    "chat.demoBanner": "Backend offline — showing demo data. Go to",
+    "chat.uploadFirst": "Upload documents to enable real Q&A.",
+    "chat.generating": "Searching library and composing answer…",
+    "chat.inputLabel": "Ask a question",
+    "chat.placeholder": "e.g. What does the supplier contract say about penalties?",
+    "chat.inputHint": "Enter to send · Shift+Enter for newline · answers cite page numbers",
+    "chat.send": "Ask",
+    "chat.viewSources": "View source docket",
+    "chat.pageNum": "Page {n}",
+    "chat.pageUnknown": "Page unknown",
+    "chat.roundAria": "Round {n}",
+    "chat.q": "Q",
+    "chat.a": "A",
+    "chat.demoBadge": "Demo",
+    "chat.noAnswer": "Try rephrasing, or upload related documents to the Library first.",
+    "chat.sources": "Sources",
+    "chat.refPrefix": "Ref-",
+    "chat.demoDoc": "demo-document.pdf",
+    "chat.demoExcerpt": "(Demo data doesn't include this excerpt)",
+    "chat.kbRef": "Knowledge base reference",
+    "chat.sourceDock": "Source docket",
+    "chat.fieldDoc": "Document",
+    "chat.fieldPage": "Page",
+    "chat.fieldSection": "Section",
+    "chat.verified": "Verified",
+    "chat.excerptUnavailable":
+      "Excerpt unavailable: the backend citation-content API is not yet provided",
+    "chat.excerptPlan":
+      "(planned {api}). Currently you can verify: document name and page.",
+    "chat.viewSourceRef": "View source {n}",
   },
 } as const;
 
@@ -74,7 +164,8 @@ export type DictKey = keyof (typeof dict)["zh"];
 interface PrefsValue {
   locale: Locale;
   setLocale: (l: Locale) => void;
-  t: (key: DictKey) => string;
+  /** 取词典文案；{key} 形式占位符由 vars 插值 */
+  t: (key: DictKey, vars?: Record<string, string | number>) => string;
   motion: Motion;
   setMotion: (m: Motion) => void;
   user: DemoUser;
@@ -140,7 +231,15 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   }, []);
 
   const t = useCallback(
-    (key: DictKey) => dict[locale][key] ?? dict.zh[key] ?? key,
+    (key: DictKey, vars?: Record<string, string | number>) => {
+      let s: string = dict[locale][key] ?? dict.zh[key] ?? key;
+      if (vars) {
+        for (const [k, v] of Object.entries(vars)) {
+          s = s.replaceAll(`{${k}}`, String(v));
+        }
+      }
+      return s;
+    },
     [locale],
   );
 

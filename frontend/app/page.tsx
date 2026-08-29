@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/page";
 import { Badge, PreviewTag } from "@/components/ui/badge";
 import { useDemoMode } from "@/lib/demo-context";
 import { demoAsk, demoConversations } from "@/lib/demo-data";
+import { usePrefs } from "@/lib/prefs";
 import {
   ask as askBackend,
   fetchMessages,
@@ -64,6 +65,7 @@ function messagesToTurns(
 
 export default function ChatPage() {
   const { demo, backend } = useDemoMode();
+  const { t } = usePrefs();
 
   const [realConvs, setRealConvs] = useState<Conversation[]>([]);
   const [demoConvos, setDemoConvos] = useState<Conversation[]>(demoConversations);
@@ -86,7 +88,7 @@ export default function ChatPage() {
         setRealConvs(
           list.map((c) => ({
             id: c.id,
-            title: c.title || "（无标题会话）",
+            title: c.title || t("chat.noTitle"),
             turns: [], // 历史按需加载
             updatedAt: Date.parse(c.last_message_at ?? c.created_at) || 0,
           })),
@@ -124,7 +126,7 @@ export default function ChatPage() {
         );
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "加载会话失败");
+        if (!cancelled) setError(e instanceof Error ? e.message : t("chat.loadFailed"));
       });
     return () => {
       cancelled = true;
@@ -256,8 +258,7 @@ export default function ChatPage() {
     } catch (e) {
       setDraftTurns([]);
       setError(
-        (e instanceof Error ? e.message : "请求出错") +
-          "。请确认后端已启动（uvicorn app.main:app），或在左下角开启演示模式。",
+        (e instanceof Error ? e.message : t("chat.askError")) + t("chat.askErrorHint"),
       );
     } finally {
       setLoading(false);
@@ -265,7 +266,7 @@ export default function ChatPage() {
   }
 
   function openSource(citation: Citation, index: number) {
-    setSource(sourceFromCitation(citation, index, demo));
+    setSource(sourceFromCitation(citation, index, demo, t));
   }
 
   return (
@@ -274,7 +275,7 @@ export default function ChatPage() {
       <aside className="hidden h-full w-56 shrink-0 flex-col md:flex">
         <div className="mb-3 flex shrink-0 items-center justify-between px-1">
           <h2 className="text-xs font-medium tracking-widest text-ink-faint">
-            会话
+            {t("chat.sessions")}
           </h2>
           <button
             onClick={() => {
@@ -284,13 +285,13 @@ export default function ChatPage() {
             className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-indigo hover:bg-indigo-wash"
           >
             <Plus size={13} />
-            新会话
+            {t("chat.newConv")}
           </button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
           {convs.length === 0 && (
             <p className="px-1 py-2 text-xs leading-5 text-ink-faint">
-              提问后会自动保存在本机，此列表不会上传。
+              {t("chat.localNote")}
             </p>
           )}
           {convs.map((c) => (
@@ -310,13 +311,13 @@ export default function ChatPage() {
             >
               {c.title}
               <span className="ml-1.5 font-mono text-[10px] text-ink-faint">
-                {c.turns.length}轮
+                {t("chat.turnsSuffix", { n: c.turns.length })}
               </span>
             </button>
           ))}
           {demo && (
             <p className="mt-2 px-1 text-[11px] leading-4 text-ink-faint">
-              演示会话不占用本机存储。
+              {t("chat.demoNote")}
             </p>
           )}
         </div>
@@ -326,12 +327,12 @@ export default function ChatPage() {
       <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         <header className="mb-4 flex flex-wrap items-center gap-2">
           <h1 className="min-w-0 font-display text-lg font-bold tracking-wide text-ink break-words">
-            {activeConv ? activeConv.title : "新会话"}
+            {activeConv ? activeConv.title : t("chat.newConv")}
           </h1>
-          {demo && <PreviewTag label="演示模式" />}
+          {demo && <PreviewTag label={t("chat.previewTag")} />}
           {turns.length > 0 && (
             <span className="font-mono text-[11px] text-ink-faint">
-              {turns.length} 轮问答
+              {t("chat.rounds", { n: turns.length })}
             </span>
           )}
           <button
@@ -342,7 +343,7 @@ export default function ChatPage() {
             className="ml-auto flex items-center gap-1 rounded-md border border-line bg-paper px-2 py-1 text-xs text-ink-soft hover:border-line-strong hover:text-ink md:hidden"
           >
             <Plus size={13} />
-            新会话
+            {t("chat.newConv")}
           </button>
         </header>
 
@@ -361,7 +362,7 @@ export default function ChatPage() {
                   : "border-line text-ink-soft",
               )}
             >
-              新会话
+              {t("chat.newConv")}
             </button>
             {convs.map((c) => (
               <button
@@ -390,11 +391,10 @@ export default function ChatPage() {
                 知
               </span>
               <h2 className="mt-4 font-display text-xl font-semibold text-balance text-ink">
-                问一个业务问题，答案必带出处
+                {t("chat.welcomeTitle")}
               </h2>
               <p className="mx-auto mt-2 max-w-sm text-[13px] leading-5 text-ink-soft">
-                系统在已上传的知识库中检索并生成答案，每条结论都标注来源页码；
-                检索不到的内容会明确告知，不编造。
+                {t("chat.welcomeDesc")}
               </p>
               <div className="mt-6 flex flex-col items-center gap-2">
                 {SAMPLE_QUESTIONS.map((q) => (
@@ -411,11 +411,11 @@ export default function ChatPage() {
               </div>
               {backend === "down" && (
                 <p className="mt-6 text-xs text-ink-faint">
-                  后端未连接，当前为演示数据。去{" "}
+                  {t("chat.demoBanner")}{" "}
                   <Link href="/documents" className="text-indigo underline underline-offset-2">
-                    知识库
+                    {t("nav.docs")}
                   </Link>{" "}
-                  上传文档后即可真实问答。
+                  {t("chat.uploadFirst")}
                 </p>
               )}
             </div>
@@ -447,7 +447,7 @@ export default function ChatPage() {
                   <i className="size-1.5 animate-bounce rounded-full bg-indigo [animation-delay:150ms] motion-reduce:animate-none" />
                   <i className="size-1.5 animate-bounce rounded-full bg-indigo [animation-delay:300ms] motion-reduce:animate-none" />
                 </span>
-                检索知识库并生成答案…
+                {t("chat.generating")}
               </div>
             )}
             <div ref={bottomRef} />
@@ -466,7 +466,7 @@ export default function ChatPage() {
         {/* 输入区 */}
         <div className="mt-4 rounded-xl border border-line bg-paper p-3 shadow-sm focus-within:border-indigo/50">
           <label htmlFor="chat-input" className="sr-only">
-            输入问题
+            {t("chat.inputLabel")}
           </label>
           <textarea
             id="chat-input"
@@ -481,12 +481,12 @@ export default function ChatPage() {
               }
             }}
             rows={2}
-            placeholder="例如：供应商合同里违约金是怎么约定的？"
+            placeholder={t("chat.placeholder")}
             className="w-full resize-none bg-transparent px-1 text-[14px] leading-6 text-ink placeholder:text-ink-faint focus:outline-none"
           />
           <div className="mt-2 flex items-center justify-between gap-2">
             <span className="hidden text-[11px] text-ink-faint sm:inline">
-              Enter 发送 · Shift+Enter 换行 · 答案均标注来源页码
+              {t("chat.inputHint")}
             </span>
             <div className="flex shrink-0 items-center gap-2">
               <Link
@@ -494,7 +494,7 @@ export default function ChatPage() {
                 className="flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-xs text-ink-soft hover:bg-porcelain hover:text-ink"
               >
                 <LibraryBig size={14} />
-                知识库
+                {t("nav.docs")}
               </Link>
               <button
                 onClick={() => void handleAsk()}
@@ -502,7 +502,7 @@ export default function ChatPage() {
                 className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo px-4 py-2 text-[13px] font-medium text-paper transition-colors hover:bg-indigo-deep disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <SendHorizontal size={14} />
-                提问
+                {t("chat.send")}
               </button>
             </div>
           </div>

@@ -7,6 +7,7 @@ import { AnswerMarkdown } from "./answer-markdown";
 import { Badge } from "@/components/ui/badge";
 import { Time } from "@/components/ui/time";
 import { demoSources } from "@/lib/demo-data";
+import { usePrefs } from "@/lib/prefs";
 import type { Citation, SourceRef, Turn } from "@/lib/types";
 import { cn, refLabel } from "@/lib/utils";
 
@@ -19,16 +20,19 @@ function CitationChip({
   label: string;
   onClick: () => void;
 }) {
+  const { t } = usePrefs();
   return (
     <button
       type="button"
       onClick={onClick}
       className="group inline-flex items-center gap-1.5 rounded-[4px] border border-seal/40 bg-seal-wash px-2 py-1 text-xs text-seal transition-colors hover:bg-seal hover:text-paper"
-      title="查看来源案卷"
+      title={t("chat.viewSources")}
     >
       <span className="font-mono">{label}</span>
       <span className="opacity-70 group-hover:opacity-90">
-        {citation.page != null ? `第 ${citation.page} 页` : "页码未知"}
+        {citation.page != null
+          ? t("chat.pageNum", { n: citation.page })
+          : t("chat.pageUnknown")}
       </span>
     </button>
   );
@@ -51,13 +55,14 @@ export function TurnItem({
   onCitation: (citation: Citation, index: number) => void;
 }) {
   const noAnswer = turn.no_answer;
+  const { t } = usePrefs();
   return (
     <article
       className={cn(
         "rise rounded-xl border border-line bg-paper px-5 py-4",
         typing && "opacity-95",
       )}
-      aria-label={`第 ${index + 1} 轮问答`}
+      aria-label={t("chat.roundAria", { n: index + 1 })}
     >
       {/* 问 */}
       <div className="flex items-baseline gap-3">
@@ -65,7 +70,7 @@ export function TurnItem({
           {String(index + 1).padStart(3, "0")}
         </span>
         <span className="rounded-sm border border-line bg-porcelain px-1.5 py-px font-mono text-[10px] text-ink-soft">
-          问
+          {t("chat.q")}
         </span>
         <h2 className="min-w-0 flex-1 text-sm font-medium text-ink">
           {turn.query}
@@ -84,9 +89,9 @@ export function TurnItem({
           {String(index + 1).padStart(3, "0")}
         </span>
         <span className="rounded-sm border border-seal/40 bg-seal-wash px-1.5 py-px font-mono text-[10px] text-seal">
-          答
+          {t("chat.a")}
         </span>
-        {demo && <Badge tone="seal">演示</Badge>}
+        {demo && <Badge tone="seal">{t("chat.demoBadge")}</Badge>}
       </div>
 
       <div className="mt-2 pl-0 sm:pl-9">
@@ -94,7 +99,7 @@ export function TurnItem({
           <div className="rounded-lg border border-amber/30 bg-amber-wash px-4 py-3 text-[13px] leading-6 text-ink">
             {turn.answer}
             <p className="mt-1 text-xs text-ink-soft">
-              可换个问法，或先到「知识库」上传相关文档。
+              {t("chat.noAnswer")}
             </p>
           </div>
         ) : (
@@ -118,7 +123,7 @@ export function TurnItem({
         {!noAnswer && turn.citations.length > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] tracking-widest text-ink-faint">
-              来源
+              {t("chat.sources")}
             </span>
             {turn.citations.map((c, i) => (
               <CitationChip
@@ -139,15 +144,16 @@ export function sourceFromCitation(
   citation: Citation,
   index: number,
   demo: boolean,
+  t: (key: import("@/lib/prefs").DictKey, vars?: Record<string, string | number>) => string,
 ): SourceRef {
   if (demo) {
     // 演示引用：从案卷库取原文摘录（lib/demo-data.ts）
     const known = demoSources[citation.chunk_id];
     const base: SourceRef = known ?? {
-      ref: "引-00",
-      title: "演示文档.pdf",
+      ref: t("chat.refPrefix") + "00",
+      title: t("chat.demoDoc"),
       page: citation.page,
-      excerpt: "（演示数据未收录该片段原文）",
+      excerpt: t("chat.demoExcerpt"),
       chunkId: citation.chunk_id,
     };
     return { ...base, ref: refLabel(index) };
@@ -155,7 +161,7 @@ export function sourceFromCitation(
   // 真实引用：后端 _enrich_citations 回填标题/节/摘录（缺失时抽屉展示规划说明）
   return {
     ref: refLabel(index),
-    title: citation.document_title || "知识库引用",
+    title: citation.document_title || t("chat.kbRef"),
     page: citation.page,
     section: citation.section ?? null,
     excerpt: citation.excerpt ?? undefined,
