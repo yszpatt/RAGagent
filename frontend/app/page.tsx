@@ -302,7 +302,7 @@ export default function ChatPage() {
               }}
               aria-current={activeId === c.id ? "true" : undefined}
               className={cn(
-                "truncate rounded-md px-2.5 py-2 text-left text-[13px] transition-colors",
+                "break-words rounded-md px-2.5 py-2 text-left text-[13px] leading-snug transition-colors",
                 activeId === c.id
                   ? "bg-indigo-wash font-medium text-indigo-deep"
                   : "text-ink-soft hover:bg-porcelain hover:text-ink",
