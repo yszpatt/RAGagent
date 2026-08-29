@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     llm_base_url: str = ""      # 留空则回落到 ollama_base_url
     llm_api_key: str = ""       # Ollama 不需要真实 key，填占位值即可
     llm_timeout: int = 120
+    # RAG 是抽取式问答，且 Tier3 的拒答判定必须是可复现的开关式判断。
+    # 实测（docs/plans/2026-08-29-optimization-plan.md §8）：
+    # 用 Ollama 默认 temperature ≈0.8 时，同一条查询重复 5 次会出现 1~2 次
+    # 判定翻转（「年假没休完会怎样」5 次里误放行 1 次，「账号密码忘了找谁」误放行 2 次）；
+    # 置 0 后 5/5 稳定。知识库里「同一个问题两次问出不同结论」是不可接受的。
+    llm_temperature: float = 0.0
 
     # ---- No-Answer 两级判定（P0-1）----
     # 实测：reranker 绝对分数域内外分布重叠，用它做门控会误杀 40% 正确答案；

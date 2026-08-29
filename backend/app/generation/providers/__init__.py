@@ -33,12 +33,14 @@ def get_llm() -> LLMProvider:
             model=settings.llm_model,
             api_key=settings.llm_api_key,
             timeout=settings.llm_timeout,
+            temperature=settings.llm_temperature,
         )
     if provider in ("ollama", ""):
         return OllamaLLM(
             base_url=settings.ollama_base_url,
             model=settings.llm_model,
             timeout=settings.llm_timeout,
+            temperature=settings.llm_temperature,
         )
     raise ValueError(
         f"未知 LLM_PROVIDER={provider!r}，可选：ollama | openai_compat"
