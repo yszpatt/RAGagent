@@ -72,5 +72,13 @@ class Settings(BaseSettings):
     dedup_enabled: bool = True
     dedup_threshold: float = 0.90
 
+    # ---- 扫描件 OCR 兜底 ----
+    # pypdf 提不出文本的页（纯扫描书 / 混合 PDF 里的扫描页）自动走
+    # pdftoppm 栅格化 + RapidOCR(onnxruntime, CPU) 识别。
+    # 只对无文本层的页 OCR：纯文本 PDF 零开销，混合 PDF 只补扫描页。
+    # 依赖：系统 poppler-utils(pdftoppm) + pip rapidocr-onnxruntime。
+    ocr_enabled: bool = True
+    ocr_dpi: int = 200
+
 
 settings = Settings()
