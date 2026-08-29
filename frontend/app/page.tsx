@@ -271,8 +271,8 @@ export default function ChatPage() {
   return (
     <div className="mx-auto flex h-full w-full max-w-6xl gap-6 overflow-hidden">
       {/* 会话列表（桌面端）：独立滚动，不挤占问答列 */}
-      <aside className="hidden h-full w-56 shrink-0 flex-col overflow-y-auto md:flex">
-        <div className="mb-3 flex items-center justify-between px-1">
+      <aside className="hidden h-full w-56 shrink-0 flex-col md:flex">
+        <div className="mb-3 flex shrink-0 items-center justify-between px-1">
           <h2 className="text-xs font-medium tracking-widest text-ink-faint">
             会话
           </h2>
@@ -287,7 +287,7 @@ export default function ChatPage() {
             新会话
           </button>
         </div>
-        <div className="flex flex-col gap-1 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
           {convs.length === 0 && (
             <p className="px-1 py-2 text-xs leading-5 text-ink-faint">
               提问后会自动保存在本机，此列表不会上传。
