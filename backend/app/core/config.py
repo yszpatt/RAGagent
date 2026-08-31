@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
     embedding_model: str = "BAAI/bge-m3"
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    # reranker 提供方：local=本机 CrossEncoder；ollama=局域网 Ollama 双塔重排（/api/embed）。
+    # ollama 模式回落到 ollama_base_url；模型默认 bge-m3（与 embedding 共用）。
+    reranker_provider: str = "local"
+    reranker_ollama_url: str = ""
+    reranker_ollama_model: str = "bge-m3"
     ollama_base_url: str = "http://localhost:11434"
     llm_model: str = "qwen2.5:7b"
     rerank_threshold: float = 0.3

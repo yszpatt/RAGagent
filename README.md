@@ -401,6 +401,7 @@ Ollama 取默认 ≈0.8，同一条查询**重复 5 次会出现 1~2 次判定�
 - **AppShell 滚动约束**：根容器 `h-screen overflow-hidden`，聊天区与历史列表各自独立滚动，历史会话很多时新对话面板不再错位、底部项不再被裁切。
 - **大文件上传**：dev 代理请求体上限 10MB → 50MB，修复大 PDF 上传 `server error`。
 - **Embedding 提供方可切换（Ollama）**：设置页「向量化（Embedding）」分区可选**本地 sentence-transformers** 或 **Ollama `/api/embed`**（默认 `bge-m3`）。选 Ollama 填 IP + 端口即可，配置经请求头 `X-KP-Embedding-Cfg` 透传给后端 API 与 RQ Worker（查询按请求上下文分发，入库由 Worker 按配置向量化）。**切换提供方后须重新摄入（reingest）全部已有文档**，否则新旧向量空间不一致会破坏检索。知识库页提供「全部重新摄入」一键按钮（封装 `POST /api/v1/documents/reingest-all`），批量用当前配置重跑所有文档向量化；原始文件已丢失的文档会自动跳过。
+- **Reranker 可迁局域网 Ollama**：`backend/.env` 设 `RERANKER_PROVIDER=ollama` 即走局域网 Ollama 双塔重排（复用 `/api/embed`，本机不再加载 CrossEncoder + torch）。当前 `192.168.9.26` 的 Ollama 为 qllama 分支、未实现 `/api/rerank`，故采用 bge-m3 双塔重排（质量略弱于 cross-encoder，但本系统 reranker 仅用于排序）。待 Ollama 侧具备 `/api/rerank` 后，可在 `OllamaReranker`（cross-encoder）与双塔之间切换。
 
 ## 技术栈
 
@@ -411,7 +412,7 @@ Ollama 取默认 ≈0.8，同一条查询**重复 5 次会出现 1~2 次判定�
 | 异步任务      | RQ + Redis                              |
 | 向量库       | PostgreSQL + pgvector（HNSW 索引）          |
 | Embedding | BAAI/bge-m3（1024 维；**默认走局域网 Ollama `192.168.9.26:11434` 的 `/api/embed`，可在设置页切回本地 sentence-transformers**） |
-| Rerank    | BAAI/bge-reranker-v2-m3（本地，仅排序不参与拒答判定）   |
+| Rerank    | `reranker_provider=local`（BAAI/bge-reranker-v2-m3，本机 CrossEncoder）**或 `ollama`**（局域网 Ollama 双塔重排，复用 `/api/embed`，本机零推理）；reranker 仅排序不参与拒答判定 |
 | LLM       | OpenAI 兼容协议（本机/局域网 Ollama、vLLM、DeepSeek 等均可；不可用时自动降级为检索片段回显） |
 | 解析        | pypdf / python-docx / 内置 txt、md；**无文本层 PDF 自动走 pdftoppm + RapidOCR 扫描件兜底** |
 | 切块        | 条款感知切块（按 条/章/节 切 + 标题回填，可切回通用递归切块）   |

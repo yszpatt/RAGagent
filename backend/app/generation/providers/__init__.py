@@ -5,7 +5,7 @@ from app.generation.providers.embedding import (
     DispatcherEmbedding,
     set_embedding_config,
 )
-from app.generation.providers.reranker import BgeReranker
+from app.generation.providers.reranker import BgeReranker, OllamaBiEncoderReranker
 from app.generation.providers.llm import OllamaLLM, OpenAICompatLLM
 from app.core.config import settings
 
@@ -22,6 +22,17 @@ def get_embedding() -> EmbeddingProvider:
 
 @lru_cache
 def get_reranker() -> RerankerProvider:
+    """按配置选择 reranker 提供方。
+
+    reranker_provider=ollama 时走局域网 Ollama 双塔重排（/api/embed），
+    复用与 embedding 相同的 Ollama 服务，去掉本机 CrossEncoder + torch。
+    """
+    provider = (settings.reranker_provider or "local").strip().lower()
+    if provider == "ollama":
+        base_url = (settings.reranker_ollama_url or "").strip() or settings.ollama_base_url
+        return OllamaBiEncoderReranker(
+            base_url=base_url, model=settings.reranker_ollama_model
+        )
     return BgeReranker(settings.reranker_model)
 
 
