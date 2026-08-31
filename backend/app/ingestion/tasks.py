@@ -4,6 +4,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.db import SessionLocal
+from app.generation.providers.embedding import EmbeddingConfig
 from app.ingestion.pipeline import run_ingestion
 
 # Redis.from_url 是惰性连接：redis server 未启动时导入本模块不会失败。
@@ -29,7 +30,10 @@ def _mark_document_failed(job, connection, type, value, traceback):
         s.commit()
 
 
-def enqueue_ingestion(path: str, document_id, workspace_id=None, roles=None):
+def enqueue_ingestion(path: str, document_id, workspace_id=None, roles=None,
+                      embedding_cfg: EmbeddingConfig | None = None):
+    """入队接入任务。embedding_cfg 透传给 worker，使其按前端设置的 Ollama 配置向量化。"""
     return queue.enqueue(run_ingestion, path, document_id, workspace_id, roles,
+                         embedding_cfg,
                          on_failure=_mark_document_failed,
                          job_timeout="1h")

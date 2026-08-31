@@ -1,6 +1,7 @@
 // 后端 API 客户端。所有请求走 /api/*（next.config rewrite 反代到 FastAPI）。
 
 import type { ChatResponse, Citation, DocStatus, DocumentMeta, Role } from "./types";
+import { embeddingHeader } from "./prefs";
 
 async function parseError(res: Response): Promise<string> {
   try {
@@ -20,7 +21,7 @@ async function parseError(res: Response): Promise<string> {
 export async function ask(query: string, conversationId?: string): Promise<ChatResponse> {
   const res = await fetch("/api/v1/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...embeddingHeader() },
     body: JSON.stringify(
       conversationId ? { query, conversation_id: conversationId } : { query },
     ),
@@ -71,6 +72,7 @@ export async function uploadDocument(file: File): Promise<UploadResult> {
   fd.append("file", file);
   const res = await fetch("/api/v1/documents/upload", {
     method: "POST",
+    headers: embeddingHeader(),
     body: fd,
   });
   if (!res.ok) throw new Error(await parseError(res));
@@ -126,7 +128,10 @@ export async function deleteDocument(id: string): Promise<void> {
 }
 
 export async function reingestDocument(id: string): Promise<void> {
-  const res = await fetch(`/api/v1/documents/${id}/reingest`, { method: "POST" });
+  const res = await fetch(`/api/v1/documents/${id}/reingest`, {
+    method: "POST",
+    headers: embeddingHeader(),
+  });
   if (!res.ok) throw new Error(await parseError(res));
 }
 

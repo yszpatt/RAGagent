@@ -393,12 +393,13 @@ Ollama 取默认 ≈0.8，同一条查询**重复 5 次会出现 1~2 次判定�
 以下能力均在 demo 阶段完成，均为纯前端（偏好存浏览器 localStorage，不触后端）：
 
 - **暗黑模式**：「深夜书房」深色主题（瓷灰底 `#141920` / 月白字 `#e4e9f1`），通过 Tailwind v4 `@theme` CSS 变量换肤，无刷新切换；通过 `prefers-color-scheme` 自动识别，可手动覆盖。
-- **设置页**（`/admin/settings`，挂在管理下）：分「外观 / 语言与动效 / 当前身份（演示）/ 本地数据 / 关于」五区，可配置主题、界面语言、动画开关、演示身份，并支持清除本地会话记录与恢复默认偏好。
+- **设置页**（`/admin/settings`，挂在管理下）：分「外观 / 语言与动效 / 当前身份（演示）/ **向量化（Embedding）** / 本地数据 / 关于」六区，可配置主题、界面语言、动画开关、演示身份、以及 Embedding 提供方（本地 / Ollama），并支持清除本地会话记录与恢复默认偏好。
 - **当前用户演示身份**：侧栏底部展示头像 + 姓名 + 角色徽章（admin / manager / employee，可切换）；**仅前端展示，真实权限以后端数据为准**。
 - **中英双语（i18n）**：导航、侧栏、设置页、聊天面板（会话列表 / 输入区 / 欢迎语 / 引用提示）等框架文案已接入 `lib/prefs.tsx` 双语词典（`t(key)` 支持 `{n}` 插值）。内容数据（会话标题、演示问答、品牌字「知」）按设计不翻译。
 - **聊天输入交互**：`Enter` 发送、`Shift+Enter` 换行（与多数 IM 一致）。
 - **AppShell 滚动约束**：根容器 `h-screen overflow-hidden`，聊天区与历史列表各自独立滚动，历史会话很多时新对话面板不再错位、底部项不再被裁切。
 - **大文件上传**：dev 代理请求体上限 10MB → 50MB，修复大 PDF 上传 `server error`。
+- **Embedding 提供方可切换（Ollama）**：设置页「向量化（Embedding）」分区可选**本地 sentence-transformers** 或 **Ollama `/api/embed`**（默认 `bge-m3`）。选 Ollama 填 IP + 端口即可，配置经请求头 `X-KP-Embedding-Cfg` 透传给后端 API 与 RQ Worker（查询按请求上下文分发，入库由 Worker 按配置向量化）。**切换提供方后须重新摄入（reingest）全部已有文档**，否则新旧向量空间不一致会破坏检索。
 
 ## 技术栈
 
@@ -408,7 +409,7 @@ Ollama 取默认 ≈0.8，同一条查询**重复 5 次会出现 1~2 次判定�
 | 编排        | LangGraph（问答状态机）                        |
 | 异步任务      | RQ + Redis                              |
 | 向量库       | PostgreSQL + pgvector（HNSW 索引）          |
-| Embedding | BAAI/bge-m3（1024 维，本地）                  |
+| Embedding | BAAI/bge-m3（1024 维；**默认本地 sentence-transformers，可切到 Ollama `/api/embed`**） |
 | Rerank    | BAAI/bge-reranker-v2-m3（本地，仅排序不参与拒答判定）   |
 | LLM       | OpenAI 兼容协议（本机/局域网 Ollama、vLLM、DeepSeek 等均可；不可用时自动降级为检索片段回显） |
 | 解析        | pypdf / python-docx / 内置 txt、md；**无文本层 PDF 自动走 pdftoppm + RapidOCR 扫描件兜底** |

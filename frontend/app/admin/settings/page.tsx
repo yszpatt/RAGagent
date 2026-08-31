@@ -10,6 +10,8 @@ import {
   usePrefs,
   type Locale,
   type Motion,
+  type EmbeddingPref,
+  type EmbeddingProviderName,
 } from "@/lib/prefs";
 import { ThemeSegmented } from "@/components/theme-toggle";
 import { PageHeader } from "@/components/ui/page";
@@ -69,7 +71,7 @@ function Segmented<T extends string>({
 }
 
 export default function SettingsPage() {
-  const { locale, setLocale, t, motion, setMotion, user, setUser, resetUser } =
+  const { locale, setLocale, t, motion, setMotion, user, setUser, resetUser, embedding, setEmbedding } =
     usePrefs();
   const { backend, refreshBackend } = useDemoMode();
 
@@ -200,6 +202,63 @@ export default function SettingsPage() {
               ? "演示身份仅保存在本机、用于界面展示；文档可见性与答案权限始终以后端数据为准。"
               : "Demo identity is local and for display only; access control always follows backend data."}
           </p>
+        </div>
+      </Section>
+
+      <Section title={locale === "zh" ? "向量化（Embedding）" : "Embedding"}>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-xs text-ink-soft">
+              {locale === "zh" ? "提供方" : "Provider"}
+            </span>
+            <Segmented<EmbeddingProviderName>
+              ariaLabel={locale === "zh" ? "向量化提供方" : "Embedding provider"}
+              value={embedding.provider}
+              onChange={(p) => setEmbedding({ ...embedding, provider: p })}
+              options={[
+                { key: "local", label: locale === "zh" ? "本地" : "Local" },
+                { key: "ollama", label: "Ollama" },
+              ]}
+            />
+          </div>
+          {embedding.provider === "ollama" && (
+            <div className="space-y-2">
+              <div className="grid grid-cols-[5rem_1fr] items-center gap-x-3 gap-y-2">
+                <label className="text-xs text-ink-soft">
+                  {locale === "zh" ? "IP 地址" : "IP"}
+                </label>
+                <input
+                  value={embedding.ip}
+                  onChange={(e) => setEmbedding({ ...embedding, ip: e.target.value })}
+                  placeholder="192.168.1.50"
+                  className="w-full rounded-md border border-line bg-transparent px-2.5 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-indigo/50 focus:outline-none"
+                />
+                <label className="text-xs text-ink-soft">
+                  {locale === "zh" ? "端口" : "Port"}
+                </label>
+                <input
+                  value={embedding.port}
+                  onChange={(e) => setEmbedding({ ...embedding, port: e.target.value })}
+                  placeholder="11434"
+                  className="w-full rounded-md border border-line bg-transparent px-2.5 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-indigo/50 focus:outline-none"
+                />
+                <label className="text-xs text-ink-soft">
+                  {locale === "zh" ? "模型" : "Model"}
+                </label>
+                <input
+                  value={embedding.model}
+                  onChange={(e) => setEmbedding({ ...embedding, model: e.target.value })}
+                  placeholder="bge-m3"
+                  className="w-full rounded-md border border-line bg-transparent px-2.5 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-indigo/50 focus:outline-none"
+                />
+              </div>
+              <p className="text-[11px] leading-4 text-ink-faint">
+                {locale === "zh"
+                  ? "Ollama 需已 pull 该模型（如 ollama pull bge-m3）并经 /api/embed 提供向量化。切换提供方后须重新摄入已有文档，否则检索向量不一致。"
+                  : "Ollama must have the model pulled (e.g. ollama pull bge-m3) and served via /api/embed. After switching, re-ingest existing documents or retrieval vectors won't match."}
+              </p>
+            </div>
+          )}
         </div>
       </Section>
 

@@ -1,11 +1,16 @@
 import uuid
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from app.generation.graphs.query_graph import get_query_graph
+from app.generation.providers.embedding import EmbeddingConfig, set_embedding_config
 from app.retrieval.vector_store import VectorStore
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+# 前端设置页下发的 embedding 配置经由此请求头透传（仅 chat 查询链路需要，
+# 入库链路在 documents 路由另作处理）。
+EMBEDDING_CFG_HEADER = "x-kp-embedding-cfg"
 
 
 class ChatRequest(BaseModel):
@@ -68,7 +73,12 @@ def _persist_exchange(payload: ChatRequest, answer: str, no_answer: bool,
 
 
 @router.post("")
-async def chat(payload: ChatRequest):
+async def chat(payload: ChatRequest, request: Request):
+    # 按请求下发的 embedding 配置（本地 / Ollama）设置本次查询上下文；
+    # 图的 embed_query 调用时由分发器读取。未下发则回落到本地 bge-m3。
+    set_embedding_config(
+        EmbeddingConfig.from_header(request.headers.get(EMBEDDING_CFG_HEADER))
+    )
     state = {"query": payload.query, "roles": ["admin", "manager", "employee"]}
     result = await run_in_threadpool(get_query_graph().invoke, state)
     citations = _enrich_citations(result["citations"])

@@ -3,15 +3,23 @@ import json
 import uuid
 from pathlib import Path
 import aiofiles
-from fastapi import APIRouter, Form, UploadFile, File, HTTPException
+from fastapi import APIRouter, Form, Request, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text as sql_text
 from app.db import SessionLocal
+from app.generation.providers.embedding import EmbeddingConfig
 from app.ingestion.tasks import enqueue_ingestion
 from app.services.audit import write_audit
 from app.services.context import default_workspace_id
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+# 前端设置页下发的 embedding 配置经由此请求头透传给后端 / worker。
+EMBEDDING_CFG_HEADER = "x-kp-embedding-cfg"
+
+
+def _embedding_cfg_from_request(request: Request) -> EmbeddingConfig | None:
+    return EmbeddingConfig.from_header(request.headers.get(EMBEDDING_CFG_HEADER))
 
 UPLOAD_DIR = Path("/tmp/kp_uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -121,7 +129,7 @@ async def delete_document(document_id: str):
 
 
 @router.post("/{document_id}/reingest")
-async def reingest_document(document_id: str):
+async def reingest_document(document_id: str, request: Request):
     """用已存储的原始文件重新接入（清空旧 chunk 后重跑管线）。"""
     try:
         doc_uuid = uuid.UUID(document_id)
@@ -142,7 +150,10 @@ async def reingest_document(document_id: str):
         ), {"id": doc_uuid})
         s.commit()
     write_audit("upload", query_text=f"重新解析 {Path(storage_path).name}")
-    job = enqueue_ingestion(storage_path, doc_uuid)
+    job = enqueue_ingestion(
+        storage_path, doc_uuid,
+        embedding_cfg=_embedding_cfg_from_request(request),
+    )
     return {"document_id": str(doc_uuid), "job_id": str(job.id), "status": "processing"}
 
 
@@ -192,7 +203,7 @@ def _find_duplicate(workspace_id, content_hash: str):
 
 @router.post("/upload")
 async def upload(file: UploadFile = File(...), role_visibility: str = Form(default=""),
-                 force: bool = Form(default=False)):
+                 force: bool = Form(default=False), request: Request = None):
     """上传文档并入队接入。
 
     三件事与旧实现不同：
@@ -278,7 +289,10 @@ async def upload(file: UploadFile = File(...), role_visibility: str = Form(defau
                    "stype": source_type, "path": str(path), "hash": content_hash})
         s.commit()
 
-    job = enqueue_ingestion(str(path), doc_id, roles=roles)
+    job = enqueue_ingestion(
+        str(path), doc_id, roles=roles,
+        embedding_cfg=_embedding_cfg_from_request(request) if request else None,
+    )
     write_audit("upload", query_text=f"{safe_name}{'（覆盖重建）' if replaced else ''}")
     return {"document_id": str(doc_id), "job_id": str(job.id), "status": "pending",
             "content_hash": content_hash, "duplicate": False, "replaced": replaced}

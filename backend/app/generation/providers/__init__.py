@@ -1,6 +1,10 @@
 from functools import lru_cache
 from app.generation.providers.base import EmbeddingProvider, RerankerProvider, LLMProvider
-from app.generation.providers.embedding import BgeM3Embedding
+from app.generation.providers.embedding import (
+    BgeM3Embedding,
+    DispatcherEmbedding,
+    set_embedding_config,
+)
 from app.generation.providers.reranker import BgeReranker
 from app.generation.providers.llm import OllamaLLM, OpenAICompatLLM
 from app.core.config import settings
@@ -8,7 +12,12 @@ from app.core.config import settings
 
 @lru_cache
 def get_embedding() -> EmbeddingProvider:
-    return BgeM3Embedding(settings.embedding_model)
+    """返回分发器单例。
+
+    查询图在首次构建时捕获该单例；每次 embed 调用时再按当前请求上下文
+    （由 chat 路由 set_embedding_config 注入）决定用本地还是 Ollama 提供方。
+    """
+    return DispatcherEmbedding()
 
 
 @lru_cache

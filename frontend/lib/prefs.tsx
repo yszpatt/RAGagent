@@ -22,9 +22,47 @@ export interface DemoUser {
   role: Role;
 }
 
+/** 向量化（embedding）提供方配置：本地 sentence-transformers 或 Ollama /api/embed。 */
+export type EmbeddingProviderName = "local" | "ollama";
+export interface EmbeddingPref {
+  provider: EmbeddingProviderName;
+  ip: string; // Ollama 主机 IP（provider=ollama 时生效）
+  port: string; // Ollama 端口，默认 11434
+  model: string; // 模型名，默认 bge-m3
+}
+
 const LOCALE_KEY = "kp.locale.v1";
 const MOTION_KEY = "kp.motion.v1";
 const USER_KEY = "kp.user.v1";
+const EMBEDDING_KEY = "kp.embedding.v1";
+
+export const DEFAULT_EMBEDDING: EmbeddingPref = {
+  provider: "local",
+  ip: "localhost",
+  port: "11434",
+  model: "bge-m3",
+};
+
+/** 读取 embedding 配置并向请求注入 X-KP-Embedding-Cfg 头（仅 ollama 时附加）。 */
+export function embeddingHeader(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(EMBEDDING_KEY);
+    if (!raw) return {};
+    const cfg = { ...DEFAULT_EMBEDDING, ...(JSON.parse(raw) as Partial<EmbeddingPref>) };
+    if (cfg.provider !== "ollama") return {};
+    const url = `http://${cfg.ip || "localhost"}:${cfg.port || "11434"}`;
+    return {
+      "X-KP-Embedding-Cfg": JSON.stringify({
+        provider: "ollama",
+        ollama_url: url,
+        model: cfg.model || "bge-m3",
+      }),
+    };
+  } catch {
+    return {};
+  }
+}
 
 /* ---------------- 双语词典（框架文案；页面正文暂不迁移） ---------------- */
 
@@ -171,6 +209,8 @@ interface PrefsValue {
   user: DemoUser;
   setUser: (u: DemoUser) => void;
   resetUser: () => void;
+  embedding: EmbeddingPref;
+  setEmbedding: (e: EmbeddingPref) => void;
 }
 
 const PrefsContext = createContext<PrefsValue | null>(null);
@@ -190,6 +230,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   const [locale, setLocaleState] = useState<Locale>("zh");
   const [motion, setMotionState] = useState<Motion>("on");
   const [user, setUserState] = useState<DemoUser>(DEFAULT_USER);
+  const [embedding, setEmbeddingState] = useState<EmbeddingPref>(DEFAULT_EMBEDDING);
 
   // 首次挂载从 localStorage 恢复（SSR 安全：读到再应用）
   useEffect(() => {
@@ -198,6 +239,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     const savedMotion = localStorage.getItem(MOTION_KEY);
     if (savedMotion === "on" || savedMotion === "off") setMotionState(savedMotion);
     setUserState(readJSON<DemoUser>(USER_KEY, DEFAULT_USER));
+    setEmbeddingState(readJSON<EmbeddingPref>(EMBEDDING_KEY, DEFAULT_EMBEDDING));
   }, []);
 
   // 语言：同步 <html lang>
@@ -230,6 +272,11 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     setUserState(DEFAULT_USER);
   }, []);
 
+  const setEmbedding = useCallback((e: EmbeddingPref) => {
+    setEmbeddingState(e);
+    localStorage.setItem(EMBEDDING_KEY, JSON.stringify(e));
+  }, []);
+
   const t = useCallback(
     (key: DictKey, vars?: Record<string, string | number>) => {
       let s: string = dict[locale][key] ?? dict.zh[key] ?? key;
@@ -244,8 +291,8 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   );
 
   const value = useMemo<PrefsValue>(
-    () => ({ locale, setLocale, t, motion, setMotion, user, setUser, resetUser }),
-    [locale, setLocale, t, motion, setMotion, user, setUser, resetUser],
+    () => ({ locale, setLocale, t, motion, setMotion, user, setUser, resetUser, embedding, setEmbedding }),
+    [locale, setLocale, t, motion, setMotion, user, setUser, resetUser, embedding, setEmbedding],
   );
 
   return <PrefsContext.Provider value={value}>{children}</PrefsContext.Provider>;

@@ -7,6 +7,10 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.db import SessionLocal
 from app.generation.providers import get_embedding
+from app.generation.providers.embedding import (
+    EmbeddingConfig,
+    build_embedder,
+)
 from app.ingestion.chunkers.clause_aware import clause_aware_chunk
 from app.ingestion.chunkers.recursive import recursive_chunk
 from app.ingestion.parsers.registry import parse
@@ -93,6 +97,7 @@ def run_ingestion(
     document_id: uuid.UUID | None = None,
     workspace_id: uuid.UUID | None = None,
     roles: list[str] | None = None,
+    embedding_cfg: EmbeddingConfig | None = None,
 ) -> uuid.UUID:
     """解析→切块→向量化→批量入库。返回 document_id。
 
@@ -106,7 +111,9 @@ def run_ingestion(
     _upsert_document(doc_id, workspace_id, path)
     try:
         pages = parse(path)
-        embedder = get_embedding()
+        # 入库链路在 worker 中执行（无请求上下文），按显式传入的配置构造提供方；
+        # 未传则回落到本地 bge-m3（与原行为一致）。
+        embedder = build_embedder(embedding_cfg) if embedding_cfg else get_embedding()
         store = VectorStore()
         # 重复摄取同一 doc_id：先清空旧 chunk，从干净状态开始，避免重复累计。
         _delete_chunks(doc_id)
