@@ -37,8 +37,8 @@ const USER_KEY = "kp.user.v1";
 const EMBEDDING_KEY = "kp.embedding.v1";
 
 export const DEFAULT_EMBEDDING: EmbeddingPref = {
-  provider: "local",
-  ip: "localhost",
+  provider: "ollama",
+  ip: "192.168.9.26",
   port: "11434",
   model: "bge-m3",
 };

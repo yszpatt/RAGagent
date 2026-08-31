@@ -409,7 +409,7 @@ Ollama 取默认 ≈0.8，同一条查询**重复 5 次会出现 1~2 次判定�
 | 编排        | LangGraph（问答状态机）                        |
 | 异步任务      | RQ + Redis                              |
 | 向量库       | PostgreSQL + pgvector（HNSW 索引）          |
-| Embedding | BAAI/bge-m3（1024 维；**默认本地 sentence-transformers，可切到 Ollama `/api/embed`**） |
+| Embedding | BAAI/bge-m3（1024 维；**默认走局域网 Ollama `192.168.9.26:11434` 的 `/api/embed`，可在设置页切回本地 sentence-transformers**） |
 | Rerank    | BAAI/bge-reranker-v2-m3（本地，仅排序不参与拒答判定）   |
 | LLM       | OpenAI 兼容协议（本机/局域网 Ollama、vLLM、DeepSeek 等均可；不可用时自动降级为检索片段回显） |
 | 解析        | pypdf / python-docx / 内置 txt、md；**无文本层 PDF 自动走 pdftoppm + RapidOCR 扫描件兜底** |
