@@ -157,6 +157,48 @@ async def reingest_document(document_id: str, request: Request):
     return {"document_id": str(doc_uuid), "job_id": str(job.id), "status": "processing"}
 
 
+@router.post("/reingest-all")
+async def reingest_all(request: Request):
+    """批量重新摄入全部已有文档（切换 embedding 提供方后必须执行）。
+
+    用已存储的原始文件重跑管线：worker 内 _delete_chunks 先清空旧 chunk 再重建，
+    向量空间随之统一到当前 embedding 配置（默认局域网 Ollama bge-m3）。
+    原始文件已丢失的文档跳过并计入 skipped。embedding 配置经请求头透传，
+    与单篇 reingest 走同一链路，保证批量与单篇行为一致。
+    """
+    embedding_cfg = _embedding_cfg_from_request(request)
+    with SessionLocal() as s:
+        rows = s.execute(sql_text(
+            "SELECT id, storage_path FROM documents WHERE storage_path IS NOT NULL"
+        )).fetchall()
+    enqueued: list[dict] = []
+    skipped: list[str] = []
+    for doc_id, storage_path in rows:
+        if not storage_path or not Path(storage_path).exists():
+            skipped.append(str(doc_id))
+            continue
+        with SessionLocal() as s:
+            s.execute(sql_text(
+                "UPDATE documents SET status = 'processing', error_message = NULL WHERE id = :id"
+            ), {"id": doc_id})
+            s.commit()
+        job = enqueue_ingestion(
+            storage_path, doc_id,
+            embedding_cfg=embedding_cfg,
+        )
+        enqueued.append({"document_id": str(doc_id), "job_id": str(job.id)})
+    write_audit(
+        "reingest_all",
+        query_text=f"批量重新摄入 {len(enqueued)} 篇，跳过 {len(skipped)} 篇",
+    )
+    return {
+        "enqueued": enqueued,
+        "enqueued_count": len(enqueued),
+        "skipped": skipped,
+        "skipped_count": len(skipped),
+    }
+
+
 class PermissionsUpdate(BaseModel):
     roles: list[str]
 

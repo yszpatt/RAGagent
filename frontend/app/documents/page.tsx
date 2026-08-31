@@ -5,7 +5,7 @@
 // 演示模式：展示占位文档集，可模拟接入/删除。
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { LibraryBig, Trash2, RotateCcw } from "lucide-react";
+import { LibraryBig, Trash2, RotateCcw, RefreshCw } from "lucide-react";
 import { PageHeader, EmptyState } from "@/components/ui/page";
 import { Badge, PreviewTag } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/documents/status-badge";
@@ -20,6 +20,7 @@ import {
   deleteDocument,
   fetchDocument,
   listDocuments,
+  reingestAllDocuments,
   reingestDocument,
   uploadDocument,
 } from "@/lib/api";
@@ -41,6 +42,9 @@ export default function DocumentsPage() {
   const [filter, setFilter] = useState<Filter>("all");
   // 两步删除确认：首次点击进入待确认态，3 秒未确认自动还原
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  // 批量重新摄入：提示文案 + 进行中锁定
+  const [batchMsg, setBatchMsg] = useState("");
+  const [batching, setBatching] = useState(false);
 
   const refreshList = useCallback(async () => {
     try {
@@ -173,6 +177,48 @@ export default function DocumentsPage() {
     }
   }
 
+  async function pollBatch(ids: string[]) {
+    for (let i = 0; i < POLL_MAX; i++) {
+      await sleep(POLL_INTERVAL);
+      try {
+        const docs = await listDocuments();
+        setRealDocs(docs);
+        const still = docs.filter(
+          (d) => ids.includes(d.id) && (d.status === "processing" || d.status === "pending"),
+        );
+        if (still.length === 0) break;
+      } catch {
+        // 网络抖动继续轮询
+      }
+    }
+  }
+
+  async function handleReingestAll() {
+    if (
+      !window.confirm(
+        "将用当前 embedding 配置（设置页所选，默认 Ollama bge-m3）重新向量化全部已有文档，旧向量会被覆盖。确认继续？",
+      )
+    ) {
+      return;
+    }
+    setBatching(true);
+    setBatchMsg("");
+    try {
+      const res = await reingestAllDocuments();
+      setBatchMsg(
+        `已提交 ${res.enqueued_count} 篇重新摄入` +
+          (res.skipped_count ? `，跳过 ${res.skipped_count} 篇（原始文件缺失）` : "") +
+          "。",
+      );
+      void refreshList();
+      void pollBatch(res.enqueued.map((e) => e.document_id));
+    } catch (e) {
+      setBatchMsg(e instanceof Error ? e.message : "批量重新摄入失败");
+    } finally {
+      setBatching(false);
+    }
+  }
+
   const docs = demo ? demoDocs : realDocs;
   const counts = useMemo(
     () => ({
@@ -225,7 +271,12 @@ export default function DocumentsPage() {
 
       {/* 列表 */}
       <div className="mt-8">
-        <div className="mb-3 flex items-center gap-1.5" role="tablist" aria-label="按状态筛选">
+        <div
+          className="mb-3 flex items-center justify-between gap-3"
+          role="tablist"
+          aria-label="按状态筛选"
+        >
+          <div className="flex items-center gap-1.5">
           {(
             [
               ["all", "全部"],
@@ -252,7 +303,32 @@ export default function DocumentsPage() {
               </span>
             </button>
           ))}
+          </div>
+          {!demo && (
+            <button
+              onClick={() => void handleReingestAll()}
+              disabled={batching}
+              className={cn(
+                "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                batching
+                  ? "cursor-not-allowed border-line bg-porcelain text-ink-faint"
+                  : "border-indigo bg-indigo-wash text-indigo-deep hover:bg-indigo/10",
+              )}
+            >
+              <RefreshCw size={12} className={batching ? "animate-spin" : ""} />
+              {batching ? "重新摄入中…" : "全部重新摄入"}
+            </button>
+          )}
         </div>
+
+        {batchMsg && (
+          <p
+            role="status"
+            className="mb-3 rounded-lg border border-indigo/30 bg-indigo-wash px-4 py-2.5 text-[13px] leading-5 text-indigo-deep"
+          >
+            {batchMsg}
+          </p>
+        )}
 
         {filtered.length === 0 ? (
           <EmptyState

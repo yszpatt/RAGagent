@@ -135,6 +135,23 @@ export async function reingestDocument(id: string): Promise<void> {
   if (!res.ok) throw new Error(await parseError(res));
 }
 
+export interface BatchReingestResult {
+  enqueued_count: number;
+  skipped_count: number;
+  enqueued: Array<{ document_id: string; job_id: string }>;
+  skipped: string[];
+}
+
+/** POST /documents/reingest-all：用当前 embedding 配置重跑全部已有文档的向量化。 */
+export async function reingestAllDocuments(): Promise<BatchReingestResult> {
+  const res = await fetch("/api/v1/documents/reingest-all", {
+    method: "POST",
+    headers: embeddingHeader(),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return (await res.json()) as BatchReingestResult;
+}
+
 export async function updateDocumentPermissions(
   id: string,
   roles: Role[],

@@ -360,6 +360,7 @@ Ollama 取默认 ≈0.8，同一条查询**重复 5 次会出现 1~2 次判定�
 | GET | `/api/v1/documents/{id}` | 查询单个文档接入状态（pending / completed / failed） |
 | DELETE | `/api/v1/documents/{id}` | 删除文档 |
 | POST | `/api/v1/documents/{id}/reingest` | 重新接入（重新解析 + 向量化） |
+| POST | `/api/v1/documents/reingest-all` | 批量重新摄入全部已有文档（用当前 embedding 配置重跑向量化；原始文件缺失的自动跳过） |
 | PUT | `/api/v1/documents/{id}/permissions` | 设置角色可见范围（`roles` 数组，admin 始终保留） |
 | POST | `/api/v1/chat` | 提问；返回带引用的答案（含原文摘录/页码/节标题），低相关时 `no_answer=true` |
 | GET | `/api/v1/conversations` | 会话列表 |
@@ -399,7 +400,7 @@ Ollama 取默认 ≈0.8，同一条查询**重复 5 次会出现 1~2 次判定�
 - **聊天输入交互**：`Enter` 发送、`Shift+Enter` 换行（与多数 IM 一致）。
 - **AppShell 滚动约束**：根容器 `h-screen overflow-hidden`，聊天区与历史列表各自独立滚动，历史会话很多时新对话面板不再错位、底部项不再被裁切。
 - **大文件上传**：dev 代理请求体上限 10MB → 50MB，修复大 PDF 上传 `server error`。
-- **Embedding 提供方可切换（Ollama）**：设置页「向量化（Embedding）」分区可选**本地 sentence-transformers** 或 **Ollama `/api/embed`**（默认 `bge-m3`）。选 Ollama 填 IP + 端口即可，配置经请求头 `X-KP-Embedding-Cfg` 透传给后端 API 与 RQ Worker（查询按请求上下文分发，入库由 Worker 按配置向量化）。**切换提供方后须重新摄入（reingest）全部已有文档**，否则新旧向量空间不一致会破坏检索。
+- **Embedding 提供方可切换（Ollama）**：设置页「向量化（Embedding）」分区可选**本地 sentence-transformers** 或 **Ollama `/api/embed`**（默认 `bge-m3`）。选 Ollama 填 IP + 端口即可，配置经请求头 `X-KP-Embedding-Cfg` 透传给后端 API 与 RQ Worker（查询按请求上下文分发，入库由 Worker 按配置向量化）。**切换提供方后须重新摄入（reingest）全部已有文档**，否则新旧向量空间不一致会破坏检索。知识库页提供「全部重新摄入」一键按钮（封装 `POST /api/v1/documents/reingest-all`），批量用当前配置重跑所有文档向量化；原始文件已丢失的文档会自动跳过。
 
 ## 技术栈
 
